@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "random-cafe"
+version = "0.1.0"
+description = "Seeded background scenes (café babble from real talkers, clatter, traffic, rain, recorded beds) rendered as stems at one microphone"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Hannah Querengasser" }]
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+audio = ["soundfile"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
