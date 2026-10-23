@@ -10,10 +10,11 @@ from ..scene import Scene
 
 
 def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom,
-           talkers: Mapping[str, Sequence[str]], load: Callable[[str, int], np.ndarray]) -> np.ndarray:
+           talkers: Mapping[str, Sequence[str]], load: Callable[[str, int], np.ndarray],
+           rx: spatial.Receiver) -> np.ndarray:
     cfg, fs = scene.babble, scene.fs
     n = int(scene.duration_s * fs)
-    out = np.zeros(n)
+    out = rx.zeros()
     names = sorted(talkers)
     k_tables = int(rng.integers(cfg.tables[0], cfg.tables[1] + 1))
     sizes = [int(rng.integers(cfg.per_table[0], cfg.per_table[1] + 1)) for _ in range(k_tables)]
@@ -44,6 +45,6 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom,
             facing = (centre - seat)[:2] / max(np.linalg.norm((centre - seat)[:2]), 1e-9)
             theta = spatial.facing_angle(seat, np.r_[facing, 0.0], scene.mic)
             x = spatial.head_shadow(track[:n], theta, fs) * 10 ** (rng.uniform(*cfg.lombard_db) / 20)
-            direct = spatial.place_static(x, seat, scene.mic, fs, n)
+            direct = rx.place_static(x, seat)
             out += room.apply(direct, spatial.distance(seat, scene.mic), rng) if scene.room.indoor else direct
     return out

@@ -1,6 +1,6 @@
 """Print CAL for render.py: 1 / median stem RMS of each layer's default scene (level_db 0, reference 0 dBFS) over
 seeds. Babble uses synthetic talkers (harmonic tones at unit RMS), which is what the per-utterance normalisation makes
-any corpus look like in level. Indoor layers are calibrated indoors, traffic and rain outdoors (so indoors they are
+any corpus look like in level. Indoor layers are calibrated indoors, traffic, rain and wind outdoors (so indoors they are
 quieter by the wall). Run after changing a layer's model: python calibrate.py"""
 import sys
 from pathlib import Path
@@ -26,13 +26,13 @@ def load(path, fs):
 
 R.CAL = {k: 1.0 for k in R.CAL}
 rms = {k: [] for k in R.CAL}
-OUTDOOR = {"traffic", "rain"}  # outdoor sources: calibrated as heard outdoors, so indoors they come out quieter
+OUTDOOR = {"traffic", "rain", "wind"}  # outdoor sources: calibrated as heard outdoors, so indoors they come out quieter
 for seed in range(8):
     for indoor in (True, False):
         s = Scene(seed=seed, duration_s=8.0, reference_dbfs=0.0)
         s.room.indoor = indoor
-        s.kitchen.enabled = s.traffic.enabled = s.rain.enabled = True
-        for name in ("babble", "clatter", "kitchen", "traffic", "rain"):
+        s.kitchen.enabled = s.traffic.enabled = s.rain.enabled = s.wind.enabled = True
+        for name in ("babble", "clatter", "kitchen", "traffic", "rain", "wind"):
             getattr(s, name).level_db = 0.0
         for k, x in R.render(s, talkers(), load).items():
             if (k in OUTDOOR) != indoor:

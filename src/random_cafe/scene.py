@@ -54,23 +54,54 @@ class Kitchen:
 
 @dataclass
 class Traffic:
-    """Passing vehicles (tyre noise and engine harmonics on a lane, with Doppler) and a distant road bed."""
+    """A street past the microphone: one or two lanes (the second running the other way) of vehicles following each
+    other, each with its own driver, optionally stopping at a pedestrian crossing's lights; engines, exhausts and
+    tyres driven by the simulated speed and load, heard with Doppler; and a distant road bed."""
     enabled: bool = False
     level_db: float = 0.0  # a busy street at the facade is about as loud as a busy café (both ~65-75 dB(A))
-    vehicles_per_min: float = 12.0
-    lane_distance_m: tuple[float, float] = (4.0, 30.0)
-    speed_kmh: tuple[float, float] = (20.0, 60.0)
-    p_heavy: float = 0.1  # share of prime movers (trucks, buses)
+    vehicles_per_min: float = 12.0  # both lanes together
+    lanes: int = 2
+    lane_distance_m: tuple[float, float] = (4.0, 30.0)  # to the near lane, drawn per scene
+    speed_kmh: tuple[float, float] = (30.0, 60.0)  # drivers' desired speeds
+    headway_s: tuple[float, float] = (1.6, 0.4)  # drivers' time gap to the vehicle ahead: mean, SD
+    p_heavy: float = 0.1  # share of prime movers (trucks, buses: manual diesels)
+    p_diesel: float = 0.3  # share of cars with diesel engines (the rest petrol; all automatics)
+    density_depth: float = 0.5  # slow swings in the flow (platoons, quiet spells), log-SD of the arrival rate
+    density_time_s: float = 30.0
+    lights: bool = False  # a pedestrian crossing with traffic lights
+    crossing_m: tuple[float, float] = (-60.0, 60.0)  # where it is along the street, drawn per scene
+    green_s: float = 40.0
+    red_s: float = 20.0
     bed_db: float = -10.0  # distant traffic relative to the passing vehicles
 
 
 @dataclass
 class Rain:
-    """Drop impacts (ticks) and Minnaert bubbles on the ground outdoors, or on window glass plus the transmitted
-    outdoor rain indoors."""
+    """Drop impacts (click and splash) on the ground outdoors, Minnaert bubbles from large drops landing in puddles;
+    indoors, drops on a window pane plus the transmitted outdoor rain."""
     enabled: bool = False
     level_db: float = -6.0
     rain_mm_h: float = 5.0
+    radius_m: float = 20.0  # rain heard out to this distance (every log-spaced ring carries similar power)
+    puddles: float = 0.1  # share of the ground under standing water
+    grains_hz: float = 500.0  # per drop-size bin: the nearest drops one by one, the rest as a dense continuum
+    gust_depth: float = 0.25  # slow rain-rate fluctuation, fraction of the mean
+    gust_time_s: float = 4.0  # its correlation time
+    # heuristic: a drop on glass shakes the whole pane, which radiates into the room far better than a splash on the
+    # ground radiates into the air; chosen so a windward window is heard well but rarely
+    # drowns the room (to be checked by ear)
+    pane_db: float = 20.0
+
+
+@dataclass
+class Wind:
+    """Turbulence buffeting the microphone outdoors, and the rush of wind around buildings and trees. The speed is
+    the scene's weather: rain reads it too (wind drives rain onto the windows) whether or not this layer is on."""
+    enabled: bool = False
+    level_db: float = -6.0
+    speed_ms: float = 4.0  # mean wind speed at the microphone (a moderate breeze)
+    gust_depth: float = 0.3  # turbulence intensity: speed fluctuation as a fraction of the mean
+    gust_time_s: float = 5.0  # correlation time of the gusts
 
 
 @dataclass
@@ -86,6 +117,7 @@ class Scene:
     fs: int = 16000
     seed: int = 0
     mic: tuple[float, float, float] = (0.0, 0.0, 1.2)
+    listener_yaw_deg: float = 90.0  # binaural renders only: the way the head faces (90: +y, the street side)
     reference_dbfs: float = -30.0  # a stem at level_db 0 has this RMS
     room: Room = field(default_factory=Room)
     babble: Babble = field(default_factory=Babble)
@@ -93,4 +125,5 @@ class Scene:
     kitchen: Kitchen = field(default_factory=Kitchen)
     traffic: Traffic = field(default_factory=Traffic)
     rain: Rain = field(default_factory=Rain)
+    wind: Wind = field(default_factory=Wind)
     bed: Bed = field(default_factory=Bed)

@@ -1,6 +1,6 @@
 # random-cafe
 
-Seeded background scenes, rendered as **separate stems** at one microphone: café babble from real talkers, clatter, a kitchen, passing traffic, rain and recorded beds.
+Seeded background scenes, rendered as **separate stems** at one microphone: café babble from real talkers, clatter, a kitchen, passing traffic, rain, wind and recorded beds.
 
 **What it's for.** It's built to augment audio data for machine-learning training: mixing realistic, labelled background noise under speech or singing for denoising, ASR robustness, voice analysis and similar work. Every stem is exact, so you know how much of each frame is signal and how much is background. It can be used for any purpose, though: sound design, listening tests, games, or just background noise to work to.
 
@@ -31,17 +31,20 @@ python -m random_cafe out/ --kitchen closed --tables 8 12 --rain 25 --traffic 5
 | `babble` | Tables of 2–4 talkers from **your** speech corpora, taking turns with conversational gaps and overlaps. Talkers face their table, so some are heard from behind (head-shadow directivity). Tables are spread uniformly over the floor area, so with 1/r gain each distance ring carries similar power: many quiet far talkers, a few near ones. |
 | `clatter` | Cups, cutlery and glass as modal grains (a click exciting a few decaying resonances), synthesised, so licence-free. Its rate follows the number of occupied tables in the presets. |
 | `kitchen` | Extractor fan (rumble plus motor hum), dish and pan clatter, espresso steam bursts. **Open**, it shares the café's room. **Closed**, it's heard through a wall or door: quieter and duller. |
-| `traffic` | Vehicles passing on a lane: tyre noise that brightens and grows with speed, plus engine harmonics. Some are prime movers (10%; 25% in `traffic-heavy`): trucks and buses with deep diesel harmonics, more level, and sometimes an air brake. Distance and Doppler follow from geometry. Also a distant road bed. Indoors, it comes in through the facade: the windows (about 18–28 dB of insulation, more at high frequencies) and, when the front door is open, the opening (about 8–15 dB, barely filtered), then reverberates in the café. Audible indoors, but a full house masks it. |
-| `rain` | Drop ticks and Minnaert bubbles (f = 3.26 / R) on the ground outdoors. Indoors: ticks on a window pane, plus the outdoor rain through the facade (windows, and the front door when open). Louder and denser with the rain rate. |
+| `traffic` | A simulated street: one or two lanes (the second running the other way), vehicles following each other by the Intelligent Driver Model, each driver with a desired speed, a time headway and an aggressiveness (how hard they accelerate and brake, how late they change up); the arrival rate drifts, so platoons form; optionally a pedestrian crossing whose lights stop the traffic. Each vehicle's speed and acceleration drive its engine through a gearbox: cars are petrol or diesel automatics (idling at 650–850 rpm, slipping as they pull away), prime movers (10%; 25% in `traffic-heavy`) are manual diesels with clutch gaps at each upshift and sometimes an air-brake dump as they stop. The engine is its firing-order harmonics (brighter and louder with load and rpm), exhaust noise pulsing at the firing rate and, for diesels, combustion knock; tyre noise grows steeply with speed. A vehicle's sources move together, with distance and Doppler from the geometry. Also a distant road bed. Indoors, it comes in through the facade: the windows (about 18–28 dB of insulation, more at high frequencies) and, when the front door is open, the opening (about 8–15 dB, barely filtered), then reverberates in the café. Audible indoors, but a full house masks it. |
+| `rain` | Drops on the ground outdoors, sized by Marshall–Palmer: each an impact click plus a splash coloured by its contact time, and large drops landing in puddles ring a Minnaert bubble (f = 3.26 / R). The nearest drops are rendered one by one, up to a budget; the dense rain further out is noise of the same colour at the power the rings carry. The rain rate drifts in slow gusts. Indoors: drops on a window pane, plus the outdoor rain through the facade (windows, and the front door when open). Wind drives rain onto the glass (a pane facing the wind takes wind speed / fall speed of the ground's flux; the facade's angle to the wind is drawn per scene), so a windward window is a rain bed of its own. Louder and denser with the rain rate. |
+| `wind` | Outdoors, turbulence buffeting the microphone (dynamic pressure, so level grows as speed²; nearly all below a few hundred Hz) plus the rush of wind around buildings and trees, both in gusts. Indoors, only the rush, through the facade. The wind speed is scene weather: rain reads it even when this layer is off. |
 | `bed` | Your recorded room tone or ambience, looped from a random offset. |
 
-**Levels are physical within the model.** Sources come out at unit level at 1 m. Distance, walls, rain rate, traffic density and occupied tables change how loud each stem is, and a per-layer calibration puts the default scene near its nominal levels. Traffic and rain are calibrated outdoors, so indoors they're quieter by the facade's insulation. The facade (window loss, whether the front door is open) is drawn once per scene, so traffic and rain always agree on it. `mix(stems, target_dbfs=...)` normalises the whole mix if you want a fixed level.
+**Levels are physical within the model.** Sources come out at unit level at 1 m. Distance, walls, rain rate, traffic density and occupied tables change how loud each stem is, and a per-layer calibration puts the default scene near its nominal levels. Traffic, rain and wind are calibrated outdoors, so indoors they're quieter by the facade's insulation. The facade (window loss, whether the front door is open) is drawn once per scene, so traffic and rain always agree on it. `mix(stems, target_dbfs=...)` normalises the whole mix if you want a fixed level.
+
+**Binaural previews.** For listening (to judge where things are, say), `render(scene, ..., hrtf=spatial.Hrtf.from_sofa("subject.sofa", fs))` or `--sofa subject.sofa` renders every stem for two ears at the microphone, facing `--yaw` degrees (90 by default: the street side, so traffic passes left to right in front). Point sources use the nearest measured HRIR, with the interaural delay; moving vehicles switch HRIRs frame by frame; nearby rain drops are grouped into direction sectors; room tails, dense rain, wind and the distant road bed are diffuse (coherent across the head below 700 Hz, decorrelated above); outdoor sound indoors arrives from the facade's opening. The HRIRs are diffuse-field equalised, so binaural stems keep the mono levels. Mono stems are bit-identical with or without this. Reading SOFA needs `h5py` (`pip install random-cafe[binaural]`); nothing else does.
 
 **One room per scene.** Every indoor source shares its reverberation time, and each gets its own tail at a direct-to-reverberant ratio that falls with distance. Each layer draws from its own seeded generator, so turning one layer on or off never changes another.
 
 ## Limiting cases and mixes
 
-Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, `traffic-light`, `traffic-heavy`, `kitchen-only`) are as easy as full scenes. The presets:
+Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, `traffic-light`, `traffic-heavy`, `kitchen-only`, `wind`) are as easy as full scenes. The presets:
 
 | Preset | Scene |
 |---|---|
@@ -51,12 +54,15 @@ Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, 
 | `kitchen-only` | just the kitchen |
 | `rain-light` / `rain-heavy` | 1.5 / 30 mm/h, nothing else, outdoors (`--indoor` for rain on the windows) |
 | `traffic-light` / `traffic-heavy` | 3 / 40 vehicles per minute, nothing else, outdoors (`--indoor` for traffic through the wall) |
+| `traffic-lights` | 20 vehicles per minute stopping and starting at a pedestrian crossing within 30 m |
 | `street-cafe` | outdoors: tables, clatter, passing traffic |
+| `street-cafe-rain` | the same, in 8 mm/h rain and a 5 m/s wind (the regulars stay out in it) |
+| `wind` | 6 m/s wind, nothing else, outdoors |
 | `rainy-cafe` | indoors: tables, rain on the windows, a little traffic outside |
 
 `presets.SNR_DB` gives the speech-to-background SNR range where each preset is realistic: a quiet café 15–30 dB, a busy café or street 0–15 dB.
 
-For training data, `random_scene(seed)` switches each layer on with probability 0.5 (at least one on). It picks indoor or outdoor and an open or closed kitchen, draws table counts, rain rate (0.5–50 mm/h) and traffic density (1–60 per minute) log-uniformly, and jitters each layer's level by ±6 dB. One seed gives one reproducible scene.
+For training data, `random_scene(seed)` switches each layer on with probability 0.5 (at least one on). It picks indoor or outdoor and an open or closed kitchen, draws table counts, rain rate (0.5–50 mm/h), traffic density (1–60 per minute) and wind speed (1–12 m/s) log-uniformly, puts lights on the street 30% of the time, and jitters each layer's level by ±6 dB. One seed gives one reproducible scene.
 
 ## Datasets
 
@@ -79,16 +85,17 @@ Never try to identify speakers in any corpus, and credit each one you use.
 
 ## Credits
 
-The fractional delay, the Brown–Duda head shadow (used here in reverse, for talker directivity), the equal-power distance rings and the impact/bubble grains follow [umbrella-rain](https://github.com/hannahsq/umbrella-rain).
+Traffic flow follows the Intelligent Driver Model (Treiber, Hennecke & Helbing 2000). The fractional delay, the Brown–Duda head shadow (used here in reverse, for talker directivity), the equal-power distance rings, the gust envelope, the rain model (drop sizes and fall speeds, click and splash grains, Minnaert bubbles) and the SOFA HRIR handling follow [umbrella-rain](https://github.com/hannahsq/umbrella-rain).
 
 ## Status and next steps
 
-0.1, a scaffold with simple, tested models. `python calibrate.py` recomputes the level calibration after a model change. Next:
+0.1, a scaffold with simple, tested models. `python calibrate.py` recomputes the level calibration after a model change, and `python demos.py --talkers talkers.tsv [--speech-root DIR] [--sofa HRIR.sofa]` renders listening demos into `listen/` (gitignored; binaural versions with `--sofa`), printing each render's speed. Next:
 - built-in loaders for the datasets above;
 - room simulation with pyroomacoustics (per-source room responses from room geometry), as an option beside the statistical shared room;
 - noise variation per draw (speed perturbation, tilt, layering);
 - moving talkers;
 - a Lombard option (raised level, f0 and F1 for talkers in noise);
-- **rain**: revisit against umbrella-rain's best demo parameters (the current drops sound over-processed, "deep fried"); on hold until those command lines are found;
-- a **wind** layer: diffuse low-frequency turbulence, the character the distant traffic bed already has, for outdoor scenes;
+- **rain**: compare by ear with umbrella-rain's best demos once their command lines are found; the window pane's level is a heuristic (`Rain.pane_db`);
+- speed: dense traffic (about 15× real time at 40 vehicles a minute) and large babble scenes are the slowest layers;
+- traffic, next stages: tuning engines and drivers by ear; more vehicle kinds (motorbikes, electric cars, buses pulling in); gear whine and turbo;
 - licence-filtered recorded-bed lists for FSD50K and MUSAN.

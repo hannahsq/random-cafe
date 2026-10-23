@@ -37,14 +37,14 @@ def grain(rng: np.random.Generator, fs: int) -> np.ndarray:
     return y / (np.max(np.abs(y)) + 1e-12)
 
 
-def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> np.ndarray:
+def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom, rx: spatial.Receiver) -> np.ndarray:
     cfg, fs = scene.clatter, scene.fs
     n = int(scene.duration_s * fs)
-    out = np.zeros(n)
+    out = rx.zeros()
     for start in np.cumsum(rng.exponential(1 / cfg.rate_hz, int(cfg.rate_hz * scene.duration_s * 2) + 5)):
         if start >= scene.duration_s:
             break
         src = spatial.floor_position(rng, cfg.radius_m, 0.75, scene.mic[:2])  # table height
-        direct = spatial.place_static(grain(rng, fs) * rng.uniform(0.3, 1.0), src, scene.mic, fs, n, start)
+        direct = rx.place_static(grain(rng, fs) * rng.uniform(0.3, 1.0), src, start)
         out += room.apply(direct, spatial.distance(src, scene.mic), rng) if scene.room.indoor else direct
     return out

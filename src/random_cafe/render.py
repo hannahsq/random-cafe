@@ -13,12 +13,12 @@ import numpy as np
 from scipy.signal import resample_poly
 
 from . import spatial
-from .layers import babble, bed, clatter, kitchen, rain, traffic
+from .layers import babble, bed, clatter, kitchen, rain, traffic, wind
 from .scene import Scene
 
 # 1 / (median stem RMS of the default scene for that layer at level_db 0), from calibrate.py; traffic and rain are
-# calibrated outdoors, so indoors they come out quieter by the wall
-CAL = {"babble": 0.5035, "clatter": 50.88, "kitchen": 4.616, "traffic": 22.35, "rain": 6.944}
+# calibrated outdoors, as is wind, so indoors they come out quieter by the wall
+CAL = {"babble": 0.5035, "clatter": 50.88, "kitchen": 4.616, "traffic": 30.58, "rain": 0.9218, "wind": 0.8751}
 
 
 def default_load(path: str, fs: int) -> np.ndarray:
@@ -40,26 +40,32 @@ def _gain(scene: Scene, layer: str, level_db: float) -> float:
 
 
 def render(scene: Scene | None = None, talkers: Mapping[str, Sequence[str]] | None = None,
-           load: Callable[[str, int], np.ndarray] = default_load) -> dict[str, np.ndarray]:
+           load: Callable[[str, int], np.ndarray] = default_load,
+           hrtf: spatial.Hrtf | None = None) -> dict[str, np.ndarray]:
     """Stems of one scene. talkers: {speaker: [audio paths]} for babble (skipped without it); load(path, fs) -> mono
-    float audio."""
+    float audio. Stems are mono (n,) at the microphone; with an hrtf (spatial.Hrtf.from_sofa), binaural (2, n) for a
+    listener there facing scene.listener_yaw_deg. Mono stems are the same with or without binaural support."""
     scene = scene or Scene()
+    rx = spatial.Receiver(scene.mic, scene.fs, int(scene.duration_s * scene.fs), hrtf, scene.listener_yaw_deg)
     room = spatial.SharedRoom(_rng(scene, "room"), scene.room.t60_s, scene.room.drr_db, scene.fs)
-    facade = spatial.Facade(_rng(scene, "facade"), scene.room, room, scene.fs)  # one street side for every outdoor source
+    facade = spatial.Facade(_rng(scene, "facade"), scene.room, room, scene.fs, rx)  # one street side for every outdoor source
     stems = {}
     if scene.babble.enabled and talkers:
-        stems["babble"] = babble.render(_rng(scene, "babble"), scene, room, talkers, load) * _gain(scene, "babble", scene.babble.level_db)
+        stems["babble"] = babble.render(_rng(scene, "babble"), scene, room, talkers, load, rx) * _gain(scene, "babble", scene.babble.level_db)
     if scene.clatter.enabled:
-        stems["clatter"] = clatter.render(_rng(scene, "clatter"), scene, room) * _gain(scene, "clatter", scene.clatter.level_db)
+        stems["clatter"] = clatter.render(_rng(scene, "clatter"), scene, room, rx) * _gain(scene, "clatter", scene.clatter.level_db)
     if scene.kitchen.enabled:
-        stems["kitchen"] = kitchen.render(_rng(scene, "kitchen"), scene, room) * _gain(scene, "kitchen", scene.kitchen.level_db)
+        stems["kitchen"] = kitchen.render(_rng(scene, "kitchen"), scene, room, rx) * _gain(scene, "kitchen", scene.kitchen.level_db)
     if scene.traffic.enabled:
-        stems["traffic"] = traffic.render(_rng(scene, "traffic"), scene, facade) * _gain(scene, "traffic", scene.traffic.level_db)
+        stems["traffic"] = traffic.render(_rng(scene, "traffic"), scene, facade, rx) * _gain(scene, "traffic", scene.traffic.level_db)
     if scene.rain.enabled:
-        stems["rain"] = rain.render(_rng(scene, "rain"), scene, room, facade) * _gain(scene, "rain", scene.rain.level_db)
+        stems["rain"] = rain.render(_rng(scene, "rain"), scene, room, facade, rx) * _gain(scene, "rain", scene.rain.level_db)
+    if scene.wind.enabled:
+        stems["wind"] = wind.render(_rng(scene, "wind"), scene, facade, rx) * _gain(scene, "wind", scene.wind.level_db)
     if scene.bed.paths:
-        x = bed.render(_rng(scene, "bed"), scene, load)
-        stems["bed"] = x * 10 ** ((scene.reference_dbfs + scene.bed.level_db) / 20) / (np.sqrt(np.mean(x ** 2)) + 1e-12)
+        r = _rng(scene, "bed")
+        x = bed.render(r, scene, load)
+        stems["bed"] = rx.diffuse(x * 10 ** ((scene.reference_dbfs + scene.bed.level_db) / 20) / (np.sqrt(np.mean(x ** 2)) + 1e-12), r)
     return stems
 
 

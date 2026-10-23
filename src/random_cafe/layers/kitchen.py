@@ -7,10 +7,10 @@ from scipy import signal
 from .. import spatial
 from ..scene import Scene
 from .clatter import grain
-from .traffic import coloured_noise
+from .noise import coloured_noise
 
 
-def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> np.ndarray:
+def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom, rx: spatial.Receiver) -> np.ndarray:
     cfg, fs = scene.kitchen, scene.fs
     n = int(scene.duration_s * fs)
     t = np.arange(n) / fs
@@ -34,7 +34,7 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> 
         hiss = signal.sosfilt(signal.butter(2, [2500, min(7500, 0.45 * fs)], "bandpass", fs=fs, output="sos"), rng.standard_normal(m))
         env = np.minimum(1, np.minimum(np.arange(m), m - np.arange(m)) / (0.15 * fs))
         spatial.add_fractional(x, 0.6 * hiss * env, start * fs)
-    direct = spatial.place_static(x, src, scene.mic, fs, n)
+    direct = rx.place_static(x, src)
     if not cfg.open:  # through a door (loss climbing only above the mid range), then into the café's room
         direct = spatial.transmission(direct, fs, rng.uniform(*cfg.wall_db), corner_hz=800.0)
     return room.apply(direct, spatial.distance(src, scene.mic), rng) if scene.room.indoor else direct

@@ -7,9 +7,11 @@ import numpy as np
 
 from .scene import Scene
 
+LAYERS = ("babble", "clatter", "kitchen", "traffic", "rain", "wind")
+
 
 def _only(s: Scene, *layers: str) -> Scene:
-    for name in ("babble", "clatter", "kitchen", "traffic", "rain"):
+    for name in LAYERS:
         getattr(s, name).enabled = name in layers
     return s
 
@@ -81,11 +83,35 @@ def traffic_heavy(s):
     return s
 
 
+def traffic_lights(s):
+    s.room.indoor = False  # just the source: standing outside, near a pedestrian crossing
+    _only(s, "traffic")
+    s.traffic.vehicles_per_min = 20.0
+    s.traffic.lights = True
+    s.traffic.crossing_m = (-30.0, 30.0)
+    return s
+
+
 def street_cafe(s):
     _only(s, "babble", "clatter", "traffic")
     s.room.indoor = False
     _tables(s, 3, 8)
     s.traffic.vehicles_per_min = 15.0
+    return s
+
+
+def street_cafe_rain(s):
+    s = street_cafe(s)  # the regulars stay out in it
+    _only(s, "babble", "clatter", "traffic", "rain", "wind")
+    s.rain.rain_mm_h = 8.0
+    s.wind.speed_ms = 5.0
+    return s
+
+
+def wind(s):
+    s.room.indoor = False  # just the source: standing outside
+    _only(s, "wind")
+    s.wind.speed_ms = 6.0
     return s
 
 
@@ -100,8 +126,8 @@ def rainy_cafe(s):
 PRESETS: dict[str, Callable[[Scene], Scene]] = {
     "cafe-quiet": cafe_quiet, "cafe-busy": cafe_busy, "cafe-open-kitchen": cafe_open_kitchen,
     "cafe-closed-kitchen": cafe_closed_kitchen, "kitchen-only": kitchen_only, "rain-light": rain_light,
-    "rain-heavy": rain_heavy, "traffic-light": traffic_light, "traffic-heavy": traffic_heavy,
-    "street-cafe": street_cafe, "rainy-cafe": rainy_cafe,
+    "rain-heavy": rain_heavy, "traffic-light": traffic_light, "traffic-heavy": traffic_heavy, "traffic-lights": traffic_lights,
+    "street-cafe": street_cafe, "street-cafe-rain": street_cafe_rain, "rainy-cafe": rainy_cafe, "wind": wind,
 }
 
 
@@ -110,8 +136,8 @@ PRESETS: dict[str, Callable[[Scene], Scene]] = {
 SNR_DB: dict[str, tuple[float, float]] = {
     "cafe-quiet": (15.0, 30.0), "cafe-busy": (0.0, 15.0), "cafe-open-kitchen": (5.0, 20.0),
     "cafe-closed-kitchen": (5.0, 20.0), "kitchen-only": (5.0, 25.0), "rain-light": (15.0, 35.0),
-    "rain-heavy": (5.0, 20.0), "traffic-light": (10.0, 30.0), "traffic-heavy": (0.0, 15.0),
-    "street-cafe": (0.0, 15.0), "rainy-cafe": (5.0, 20.0),
+    "rain-heavy": (5.0, 20.0), "traffic-light": (10.0, 30.0), "traffic-heavy": (0.0, 15.0), "traffic-lights": (5.0, 20.0),
+    "street-cafe": (0.0, 15.0), "street-cafe-rain": (0.0, 15.0), "rainy-cafe": (5.0, 20.0), "wind": (0.0, 20.0),
 }
 
 
@@ -124,7 +150,7 @@ def random_scene(seed: int, p_layer: float = 0.5, **scene_kw) -> Scene:
     intensity drawn log-uniformly across its realistic range, all from `seed`."""
     rng = np.random.default_rng([seed, 0xCAFE])
     s = Scene(seed=seed, **scene_kw)
-    names = ["babble", "clatter", "kitchen", "traffic", "rain"]
+    names = list(LAYERS)
     on = rng.uniform(size=len(names)) < p_layer
     if not on.any():
         on[rng.integers(len(names))] = True
@@ -135,6 +161,8 @@ def random_scene(seed: int, p_layer: float = 0.5, **scene_kw) -> Scene:
     _tables(s, lo, lo + int(rng.integers(0, 5)))
     s.rain.rain_mm_h = float(np.exp(rng.uniform(np.log(0.5), np.log(50.0))))
     s.traffic.vehicles_per_min = float(np.exp(rng.uniform(np.log(1.0), np.log(60.0))))
+    s.wind.speed_ms = float(np.exp(rng.uniform(np.log(1.0), np.log(12.0))))
+    s.traffic.lights = bool(rng.uniform() < 0.3)
     for n in names:
         getattr(s, n).level_db += rng.uniform(-6.0, 6.0)
     return s

@@ -15,6 +15,7 @@ dependencies = ["numpy", "scipy"]
 [project.optional-dependencies]
 audio = ["soundfile"]
 test = ["pytest"]
+binaural = ["h5py"]  # reading SOFA HRIRs, for binaural listening previews
 
 [tool.setuptools.packages.find]
 where = ["src"]
