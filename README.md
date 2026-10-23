@@ -31,7 +31,7 @@ python -m random_cafe out/ --kitchen closed --tables 8 12 --rain 25 --traffic 5
 | `babble` | Tables of 2–4 talkers from **your** speech corpora, taking turns with conversational gaps and overlaps. Talkers face their table, so some are heard from behind (head-shadow directivity). Tables are spread uniformly over the floor area, so with 1/r gain each distance ring carries similar power: many quiet far talkers, a few near ones. |
 | `clatter` | Cups, cutlery and glass as modal grains (a click exciting a few decaying resonances), synthesised, so licence-free. Its rate follows the number of occupied tables in the presets. |
 | `kitchen` | Extractor fan (rumble plus motor hum), dish and pan clatter, espresso steam bursts. **Open**, it shares the café's room. **Closed**, it's heard through a wall or door: quieter and duller. |
-| `traffic` | Vehicles passing on a lane: tyre noise that brightens and grows with speed, plus engine harmonics. Distance and Doppler follow from geometry. Also a distant road bed. Indoors, it comes in through the facade: the windows (about 18–28 dB of insulation, more at high frequencies) and, when the front door is open, the opening (about 8–15 dB, barely filtered), then reverberates in the café. Audible indoors, but a full house masks it. |
+| `traffic` | Vehicles passing on a lane: tyre noise that brightens and grows with speed, plus engine harmonics. Some are prime movers (10%; 25% in `traffic-heavy`): trucks and buses with deep diesel harmonics, more level, and sometimes an air brake. Distance and Doppler follow from geometry. Also a distant road bed. Indoors, it comes in through the facade: the windows (about 18–28 dB of insulation, more at high frequencies) and, when the front door is open, the opening (about 8–15 dB, barely filtered), then reverberates in the café. Audible indoors, but a full house masks it. |
 | `rain` | Drop ticks and Minnaert bubbles (f = 3.26 / R) on the ground outdoors. Indoors: ticks on a window pane, plus the outdoor rain through the facade (windows, and the front door when open). Louder and denser with the rain rate. |
 | `bed` | Your recorded room tone or ambience, looped from a random offset. |
 
@@ -45,7 +45,7 @@ Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, 
 
 | Preset | Scene |
 |---|---|
-| `cafe-quiet` | 1–2 occupied tables, little clatter |
+| `cafe-quiet` | 1–2 occupied tables; soft voices, careful cutlery (a high-SNR scene) |
 | `cafe-busy` | 8–14 tables, open kitchen |
 | `cafe-open-kitchen` / `cafe-closed-kitchen` | the kitchen in the room, or behind a wall |
 | `kitchen-only` | just the kitchen |
@@ -53,6 +53,8 @@ Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, 
 | `traffic-light` / `traffic-heavy` | 3 / 40 vehicles per minute, nothing else, outdoors (`--indoor` for traffic through the wall) |
 | `street-cafe` | outdoors: tables, clatter, passing traffic |
 | `rainy-cafe` | indoors: tables, rain on the windows, a little traffic outside |
+
+`presets.SNR_DB` gives the speech-to-background SNR range where each preset is realistic: a quiet café 15–30 dB, a busy café or street 0–15 dB.
 
 For training data, `random_scene(seed)` switches each layer on with probability 0.5 (at least one on). It picks indoor or outdoor and an open or closed kitchen, draws table counts, rain rate (0.5–50 mm/h) and traffic density (1–60 per minute) log-uniformly, and jitters each layer's level by ±6 dB. One seed gives one reproducible scene.
 
@@ -87,4 +89,6 @@ The fractional delay, the Brown–Duda head shadow (used here in reverse, for ta
 - noise variation per draw (speed perturbation, tilt, layering);
 - moving talkers;
 - a Lombard option (raised level, f0 and F1 for talkers in noise);
+- **rain**: revisit against umbrella-rain's best demo parameters (the current drops sound over-processed, "deep fried"); on hold until those command lines are found;
+- a **wind** layer: diffuse low-frequency turbulence, the character the distant traffic bed already has, for outdoor scenes;
 - licence-filtered recorded-bed lists for FSD50K and MUSAN.

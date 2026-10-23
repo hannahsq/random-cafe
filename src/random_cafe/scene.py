@@ -60,6 +60,7 @@ class Traffic:
     vehicles_per_min: float = 12.0
     lane_distance_m: tuple[float, float] = (4.0, 30.0)
     speed_kmh: tuple[float, float] = (20.0, 60.0)
+    p_heavy: float = 0.1  # share of prime movers (trucks, buses)
     bed_db: float = -10.0  # distant traffic relative to the passing vehicles
 
 

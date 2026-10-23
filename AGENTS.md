@@ -26,6 +26,10 @@ Seeded background scenes rendered as separate stems at one microphone: babble fr
 - **Levels are physical within the model.** Sources come out at unit level at 1 m. Distance, walls, rates and counts change loudness. Don't normalise stems individually. **After changing a layer's model, run `python calibrate.py`** and paste the result into `CAL` (traffic and rain are calibrated outdoors).
 - **Facade losses are insulation** (outdoor minus indoor level). Don't add separate spreading loss on top.
 
+## Open items
+
+- Rain sounds over-processed next to umbrella-rain's demos: revisit with its best demo parameters (Hannah is finding the command lines) before tuning further.
+
 ## Conventions
 
 - New corpora must have licences that allow any use with attribution (CC0, CC BY, Apache). Never ship audio. Never try to identify speakers.

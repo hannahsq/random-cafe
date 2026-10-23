@@ -16,12 +16,16 @@ def _only(s: Scene, *layers: str) -> Scene:
 
 def _tables(s: Scene, lo: int, hi: int) -> None:
     s.babble.tables = (lo, hi)
-    s.clatter.rate_hz = 0.4 * (lo + hi) / 2  # clatter follows how many tables are occupied
+    # clatter grows with occupied tables, but more slowly than linearly: in a full room, sounds overlap and blur
+    s.clatter.rate_hz = 0.4 * ((lo + hi) / 2) ** 0.85
 
 
 def cafe_quiet(s):
     _only(s, "babble", "clatter")
     _tables(s, 1, 2)
+    s.babble.lombard_db = (-4.0, 0.0)  # people talk more softly in a quiet room
+    s.babble.level_db -= 3.0
+    s.clatter.level_db -= 3.0  # and handle cutlery more carefully (the clatter-to-voice balance unchanged)
     return s
 
 
@@ -73,6 +77,7 @@ def traffic_heavy(s):
     _only(s, "traffic")
     s.traffic.vehicles_per_min = 40.0
     s.traffic.lane_distance_m = (3.0, 15.0)
+    s.traffic.p_heavy = 0.25  # a main road: plenty of trucks and buses
     return s
 
 
@@ -97,6 +102,16 @@ PRESETS: dict[str, Callable[[Scene], Scene]] = {
     "cafe-closed-kitchen": cafe_closed_kitchen, "kitchen-only": kitchen_only, "rain-light": rain_light,
     "rain-heavy": rain_heavy, "traffic-light": traffic_light, "traffic-heavy": traffic_heavy,
     "street-cafe": street_cafe, "rainy-cafe": rainy_cafe,
+}
+
+
+# SNR ranges (dB, speech against the whole background) where each preset is realistic for mixing; a quiet café is a
+# high-SNR scene (soft voices, careful cutlery), a busy one goes much lower. Heuristic; for augmentation recipes.
+SNR_DB: dict[str, tuple[float, float]] = {
+    "cafe-quiet": (15.0, 30.0), "cafe-busy": (0.0, 15.0), "cafe-open-kitchen": (5.0, 20.0),
+    "cafe-closed-kitchen": (5.0, 20.0), "kitchen-only": (5.0, 25.0), "rain-light": (15.0, 35.0),
+    "rain-heavy": (5.0, 20.0), "traffic-light": (10.0, 30.0), "traffic-heavy": (0.0, 15.0),
+    "street-cafe": (0.0, 15.0), "rainy-cafe": (5.0, 20.0),
 }
 
 
