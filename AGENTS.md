@@ -2,6 +2,8 @@
 
 Seeded background scenes rendered as separate stems at one microphone: babble from real talkers, clatter, kitchen, traffic, rain, recorded beds. It's for augmenting ML audio data, though usable for anything. Code MIT; no audio ships (bring your own corpora).
 
+**Scope:** not limited to cafés. The café is the first environment, and new environments should reuse and generalise the layers (talkers, impacts, machinery, traffic, weather, rooms, facades) rather than fork them.
+
 ## Layout
 
 - `src/random_cafe/scene.py`: dataclasses for every parameter (`Scene`, `Room`, one per layer).

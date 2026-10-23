@@ -4,6 +4,8 @@ Seeded background scenes, rendered as **separate stems** at one microphone: caf�
 
 **What it's for.** It's built to augment audio data for machine-learning training: mixing realistic, labelled background noise under speech or singing for denoising, ASR robustness, voice analysis and similar work. Every stem is exact, so you know how much of each frame is signal and how much is background. It can be used for any purpose, though: sound design, listening tests, games, or just background noise to work to.
 
+**Scope.** The name stays, but scenes aren't limited to cafés: the café is the first environment. Its layers (talkers, impacts, machinery, traffic, weather, rooms, facades) are general building blocks for others, such as streets, markets, offices, transport and homes.
+
 **Licence.** The code is MIT. **No audio ships with it: bring your own datasets.** You point it at corpora you have downloaded, and their licences stay yours to respect (see [Datasets](#datasets)).
 
 ```python
