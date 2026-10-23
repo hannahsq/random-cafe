@@ -47,14 +47,32 @@ def test_layers_independent():
     assert "traffic" in b
 
 
-def test_stem_levels_and_mix():
-    st = render(scene(traffic__enabled=True, rain__enabled=True), fake_talkers(), fake_load)
-    s = scene()
-    for k, x in st.items():
+def rms_db(x):
+    return 20 * np.log10(np.sqrt(np.mean(x ** 2)) + 1e-12)
+
+
+def test_stems_and_mix():
+    st = render(scene(traffic__enabled=True, rain__enabled=True, kitchen__enabled=True), fake_talkers(), fake_load)
+    assert set(st) == {"babble", "clatter", "kitchen", "traffic", "rain"}
+    for x in st.values():
         assert x.shape == (4 * FS,) and np.all(np.isfinite(x))
-    ref = 10 ** (s.reference_dbfs / 20)
-    assert np.sqrt(np.mean(st["babble"] ** 2)) == pytest.approx(ref * 10 ** (s.babble.level_db / 20), rel=1e-6)
     assert np.allclose(mix(st), sum(st.values()))
+    assert rms_db(mix(st, target_dbfs=-20.0)) == pytest.approx(-20.0, abs=1e-6)
+
+
+def mean_db(layer, seeds=range(4), **kw):
+    """stem level averaged over seeds (single renders vary)"""
+    return np.mean([rms_db(render(scene(seed=s, **kw), fake_talkers(30), fake_load)[layer]) for s in seeds])
+
+
+def test_levels_follow_the_scene():
+    """intensities are physical: heavier rain, denser traffic and more tables are louder; walls make things quieter"""
+    assert mean_db("rain", rain__enabled=True, rain__rain_mm_h=30.0) > mean_db("rain", rain__enabled=True, rain__rain_mm_h=1.5) + 10
+    assert mean_db("traffic", traffic__enabled=True, traffic__vehicles_per_min=40.0, room__indoor=False) > \
+        mean_db("traffic", traffic__enabled=True, traffic__vehicles_per_min=3.0, room__indoor=False) + 5
+    assert mean_db("babble", babble__tables=(8, 10)) > mean_db("babble", babble__tables=(1, 1)) + 3
+    assert mean_db("traffic", traffic__enabled=True, room__indoor=True) < mean_db("traffic", traffic__enabled=True, room__indoor=False) - 15
+    assert mean_db("kitchen", kitchen__enabled=True, kitchen__open=False) < mean_db("kitchen", kitchen__enabled=True, kitchen__open=True) - 8
 
 
 def hf_share(x):
@@ -66,6 +84,26 @@ def test_indoor_traffic_is_darker():
     out = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=False))["traffic"]
     ins = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=True))["traffic"]
     assert hf_share(ins) < 0.2 * hf_share(out)
+
+
+def test_closed_kitchen_is_darker():
+    o = render(scene(kitchen__enabled=True, kitchen__open=True, babble__enabled=False, clatter__enabled=False))["kitchen"]
+    c = render(scene(kitchen__enabled=True, kitchen__open=False, babble__enabled=False, clatter__enabled=False))["kitchen"]
+    assert hf_share(c) < 0.5 * hf_share(o)
+
+
+def test_presets_and_random_scenes():
+    from random_cafe.presets import PRESETS, preset, random_scene
+    for name in PRESETS:
+        st = render(preset(name, duration_s=2.0, fs=FS, seed=3), fake_talkers(20), fake_load)
+        assert st and all(np.all(np.isfinite(x)) for x in st.values()), name
+    assert set(render(preset("rain-heavy", duration_s=2.0, fs=FS))) == {"rain"}
+    assert set(render(preset("traffic-light", duration_s=2.0, fs=FS))) == {"traffic"}
+    a, b = random_scene(5, duration_s=2.0, fs=FS), random_scene(5, duration_s=2.0, fs=FS)
+    assert a == b
+    layer_sets = {tuple(n for n in ("babble", "clatter", "kitchen", "traffic", "rain") if getattr(random_scene(s), n).enabled)
+                  for s in range(40)}
+    assert len(layer_sets) > 10 and () not in layer_sets
 
 
 def test_doppler():

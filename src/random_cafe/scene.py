@@ -33,6 +33,19 @@ class Clatter:
 
 
 @dataclass
+class Kitchen:
+    """Extractor fan, dish clatter and espresso steam at one place; open (shares the room) or closed (through a
+    wall / door)."""
+    enabled: bool = False
+    open: bool = True
+    level_db: float = -8.0
+    distance_m: tuple[float, float] = (5.0, 12.0)
+    clatter_rate_hz: float = 3.0
+    steam_rate_hz: float = 0.08
+    wall_db: tuple[float, float] = (12.0, 25.0)  # a door or partition, less than an outside wall
+
+
+@dataclass
 class Traffic:
     """Passing vehicles (tyre noise and engine harmonics on a lane, with Doppler) and a distant road bed."""
     enabled: bool = False
@@ -69,6 +82,7 @@ class Scene:
     room: Room = field(default_factory=Room)
     babble: Babble = field(default_factory=Babble)
     clatter: Clatter = field(default_factory=Clatter)
+    kitchen: Kitchen = field(default_factory=Kitchen)
     traffic: Traffic = field(default_factory=Traffic)
     rain: Rain = field(default_factory=Rain)
     bed: Bed = field(default_factory=Bed)

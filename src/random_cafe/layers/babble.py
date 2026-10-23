@@ -35,6 +35,7 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom,
             who = int(rng.choice([i for i in range(size) if i != last] or [0]))
             files = talkers[members[who]]
             x = load(files[int(rng.integers(len(files)))], fs)
+            x = x / (np.sqrt(np.mean(x ** 2)) + 1e-12)  # corpora differ in level: every utterance at unit RMS
             spatial.add_fractional(tracks[who], x, max(t, -x.size / fs) * fs)
             t += x.size / fs + rng.normal(cfg.gap_s[0], cfg.gap_s[1])
             last = who

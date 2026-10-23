@@ -1,19 +1,25 @@
 # random-cafe
 
-Seeded background scenes, rendered as **separate stems** at one microphone: café babble from real talkers, clatter, passing traffic, rain, and recorded beds. Built for training and testing voice and speech models under realistic noise. Because every stem is exact, you know how much of each frame is voice and how much is background.
+Seeded background scenes, rendered as **separate stems** at one microphone: café babble from real talkers, clatter, a kitchen, passing traffic, rain and recorded beds.
+
+**What it's for.** It's built to augment audio data for machine-learning training: mixing realistic, labelled background noise under speech or singing for denoising, ASR robustness, voice analysis and similar work. Every stem is exact, so you know how much of each frame is signal and how much is background. It can be used for any purpose, though: sound design, listening tests, games, or just background noise to work to.
+
+**Licence.** The code is MIT. **No audio ships with it: bring your own datasets.** You point it at corpora you have downloaded, and their licences stay yours to respect (see [Datasets](#datasets)).
 
 ```python
 from random_cafe import Scene, render, mix
+from random_cafe.presets import preset, random_scene
 
-scene = Scene(duration_s=10, fs=16000, seed=7)
-scene.traffic.enabled = True          # passing vehicles + distant road bed
-scene.rain.enabled = True             # drops on the ground, or on the window indoors
-stems = render(scene, talkers={"spk1": ["a.wav", "b.wav"], "spk2": [...]})
-background = mix(stems)               # add your target voice yourself
+stems = render(preset("rainy-cafe", seed=7), talkers={"spk1": ["a.wav", "b.wav"], "spk2": ["c.wav"]})
+background = mix(stems)                      # add your target voice yourself, at the SNR you want
+
+scene = random_scene(seed=42)                # for augmentation: layers and intensities drawn from the seed
 ```
 
 ```
-python -m random_cafe out/ --seed 7 --traffic --rain 8 --talkers talkers.tsv
+python -m random_cafe out/ --preset street-cafe --talkers talkers.tsv --seed 7
+python -m random_cafe out/ --random --seed 42 --talkers talkers.tsv
+python -m random_cafe out/ --kitchen closed --tables 8 12 --rain 25 --traffic 5
 ```
 
 ## What is in a scene
@@ -21,16 +27,51 @@ python -m random_cafe out/ --seed 7 --traffic --rain 8 --talkers talkers.tsv
 | Stem | Model |
 |---|---|
 | `babble` | Tables of 2–4 talkers from **your** speech corpora, taking turns with conversational gaps and overlaps. Talkers face their table, so some are heard from behind (head-shadow directivity). Tables are spread uniformly over the floor area, so with 1/r gain each distance ring carries similar power: many quiet far talkers, a few near ones. |
-| `clatter` | Cups, cutlery and glass as modal grains (a click exciting a few decaying resonances), synthesised, so licence-free. |
-| `traffic` | Vehicles passing on a lane: tyre noise that brightens and grows with speed, plus engine harmonics. Distance and Doppler follow from geometry. Also a distant road bed. Indoors, everything passes through the wall or window (mass-law low-pass plus loss). |
-| `rain` | Drop ticks and Minnaert bubbles (f = 3.26 / R) on the ground outdoors. Indoors: ticks on a window pane, plus the outdoor rain through the wall. |
+| `clatter` | Cups, cutlery and glass as modal grains (a click exciting a few decaying resonances), synthesised, so licence-free. Its rate follows the number of occupied tables in the presets. |
+| `kitchen` | Extractor fan (rumble plus motor hum), dish and pan clatter, espresso steam bursts. **Open**, it shares the café's room. **Closed**, it's heard through a wall or door: quieter and duller. |
+| `traffic` | Vehicles passing on a lane: tyre noise that brightens and grows with speed, plus engine harmonics. Distance and Doppler follow from geometry. Also a distant road bed. Indoors, everything comes through the wall or window (mass-law low-pass plus loss). |
+| `rain` | Drop ticks and Minnaert bubbles (f = 3.26 / R) on the ground outdoors. Indoors: ticks on a window pane, plus the outdoor rain through the wall. Louder and denser with the rain rate. |
 | `bed` | Your recorded room tone or ambience, looped from a random offset. |
 
-One room per scene: every indoor source shares its reverberation time, and each gets its own tail at a direct-to-reverberant ratio that falls with distance. Each layer draws from its own seeded generator, so turning one layer on or off never changes another.
+**Levels are physical within the model.** Sources come out at unit level at 1 m. Distance, walls, rain rate, traffic density and occupied tables change how loud each stem is, and a per-layer calibration puts the default scene near its nominal levels. Traffic and rain are calibrated outdoors, so indoors they're quieter by the wall. `mix(stems, target_dbfs=...)` normalises the whole mix if you want a fixed level.
 
-## Data and licences
+**One room per scene.** Every indoor source shares its reverberation time, and each gets its own tail at a direct-to-reverberant ratio that falls with distance. Each layer draws from its own seeded generator, so turning one layer on or off never changes another.
 
-No audio ships with this package. You supply talkers and beds, and their licences stay yours to respect: use corpora whose terms allow your purpose, and never try to identify speakers. The code is MIT.
+## Limiting cases and mixes
+
+Every layer switches on and off, so single sources (`rain-light`, `rain-heavy`, `traffic-light`, `traffic-heavy`, `kitchen-only`) are as easy as full scenes. The presets:
+
+| Preset | Scene |
+|---|---|
+| `cafe-quiet` | 1–2 occupied tables, little clatter |
+| `cafe-busy` | 8–14 tables, open kitchen |
+| `cafe-open-kitchen` / `cafe-closed-kitchen` | the kitchen in the room, or behind a wall |
+| `kitchen-only` | just the kitchen |
+| `rain-light` / `rain-heavy` | 1.5 / 30 mm/h, nothing else, outdoors (`--indoor` for rain on the windows) |
+| `traffic-light` / `traffic-heavy` | 3 / 40 vehicles per minute, nothing else, outdoors (`--indoor` for traffic through the wall) |
+| `street-cafe` | outdoors: tables, clatter, passing traffic |
+| `rainy-cafe` | indoors: tables, rain on the windows, a little traffic outside |
+
+For training data, `random_scene(seed)` switches each layer on with probability 0.5 (at least one on). It picks indoor or outdoor and an open or closed kitchen, draws table counts, rain rate (0.5–50 mm/h) and traffic density (1–60 per minute) log-uniformly, and jitters each layer's level by ±6 dB. One seed gives one reproducible scene.
+
+## Datasets
+
+None are bundled; you download them yourself. These are the ones we plan to add built-in loaders for, chosen because their licences allow any use with attribution:
+
+| Dataset | Use | Licence |
+|---|---|---|
+| LibriTTS-R | talkers (English) | CC BY 4.0 |
+| VCTK 0.92 | talkers (English, many accents) | CC BY 4.0 |
+| Common Voice | talkers (many languages, own microphones) | CC0 (agree not to identify speakers) |
+| Multilingual LibriSpeech | talkers (8 European languages) | CC BY 4.0 |
+| Zeroth-Korean | talkers (Korean) | CC BY 4.0 |
+| speechocean762 | talkers (English, children and adults) | CC BY 4.0 |
+| Samrómur Children | talkers (Icelandic, children 4–17) | CC BY 4.0 |
+| MUSAN (noise subset) | recorded beds | CC BY 4.0 (check per-file terms for its music) |
+| RIRS_NOISES (OpenSLR 28) | recorded beds and room responses | Apache 2.0 (check its source databases) |
+| FSD50K | café, crowd, traffic and street beds | per clip: keep CC0 / CC BY only |
+
+Never try to identify speakers in any corpus, and credit each one you use.
 
 ## Credits
 
@@ -38,9 +79,10 @@ The fractional delay, the Brown–Duda head shadow (used here in reverse, for ta
 
 ## Status and next steps
 
-0.1, a scaffold with simple, tested models. Next:
-- room simulation with pyroomacoustics (per-source RIRs from room geometry), as an option beside the statistical shared room;
+0.1, a scaffold with simple, tested models. `python calibrate.py` recomputes the level calibration after a model change. Next:
+- built-in loaders for the datasets above;
+- room simulation with pyroomacoustics (per-source room responses from room geometry), as an option beside the statistical shared room;
 - noise variation per draw (speed perturbation, tilt, layering);
 - moving talkers;
 - a Lombard option (raised level, f0 and F1 for talkers in noise);
-- recorded beds from licence-filtered FSD50K / MUSAN lists.
+- licence-filtered recorded-bed lists for FSD50K and MUSAN.
