@@ -8,7 +8,14 @@ class Room:
     indoor: bool = True
     t60_s: tuple[float, float] = (0.3, 0.9)  # reverberation time, drawn once per scene (one room for every source)
     drr_db: tuple[float, float] = (0.0, 10.0)  # direct-to-reverberant ratio for a source 1 m from the microphone
-    transmission_db: tuple[float, float] = (25.0, 40.0)  # wall / window loss for outdoor sources heard indoors
+    # outdoor sources heard indoors come in through the facade: windows (the weakest part of a wall, so they set the
+    # loss) and, often in a café, an open front door (an opening: little loss, almost no filtering). Losses are facade
+    # insulation, outdoor level minus indoor level, so they already include spreading and the room
+    window_db: tuple[float, float] = (18.0, 28.0)
+    window_corner_hz: float = 400.0
+    p_door_open: float = 0.5
+    door_db: tuple[float, float] = (8.0, 15.0)
+    facade_distance_m: tuple[float, float] = (3.0, 8.0)  # from the facade to the microphone
 
 
 @dataclass
@@ -49,7 +56,7 @@ class Kitchen:
 class Traffic:
     """Passing vehicles (tyre noise and engine harmonics on a lane, with Doppler) and a distant road bed."""
     enabled: bool = False
-    level_db: float = -4.0
+    level_db: float = 0.0  # a busy street at the facade is about as loud as a busy café (both ~65-75 dB(A))
     vehicles_per_min: float = 12.0
     lane_distance_m: tuple[float, float] = (4.0, 30.0)
     speed_kmh: tuple[float, float] = (20.0, 60.0)

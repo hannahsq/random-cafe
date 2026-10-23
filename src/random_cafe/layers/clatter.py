@@ -34,5 +34,5 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> 
             break
         src = spatial.floor_position(rng, cfg.radius_m, 0.75, scene.mic[:2])  # table height
         direct = spatial.place_static(grain(rng, fs) * rng.uniform(0.3, 1.0), src, scene.mic, fs, n, start)
-        out += room.apply(direct, spatial.distance(src, scene.mic)) if scene.room.indoor else direct
+        out += room.apply(direct, spatial.distance(src, scene.mic), rng) if scene.room.indoor else direct
     return out

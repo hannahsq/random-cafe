@@ -1,6 +1,6 @@
 """Traffic: passing vehicles on a straight lane (tyre noise brightening and growing with speed, plus engine
 harmonics), moving past the microphone so distance and Doppler follow from geometry; and a distant road bed. Indoors
-the whole stem goes through the wall / window (mass-law low-pass plus loss)."""
+the whole stem comes in through the facade: windows, and the front door when it is open."""
 import numpy as np
 from scipy import signal
 
@@ -29,7 +29,7 @@ def vehicle(rng: np.random.Generator, n: int, fs: int, speed_ms: float) -> np.nd
     return level * (tyre + rng.uniform(0.2, 0.8) * engine / np.std(engine))
 
 
-def render(rng: np.random.Generator, scene: Scene) -> np.ndarray:
+def render(rng: np.random.Generator, scene: Scene, facade: spatial.Facade) -> np.ndarray:
     cfg, fs = scene.traffic, scene.fs
     n = int(scene.duration_s * fs)
     out = np.zeros(n)
@@ -48,5 +48,5 @@ def render(rng: np.random.Generator, scene: Scene) -> np.ndarray:
     env = np.interp(np.arange(n), np.linspace(0, n, 8), 1 + 0.3 * rng.standard_normal(8))
     out += bed * np.clip(env, 0.3, None) * np.std(out + 1e-9) * 10 ** (cfg.bed_db / 20)
     if scene.room.indoor:
-        out = spatial.transmission(out, fs, rng.uniform(*scene.room.transmission_db))
+        out = facade(out, rng)
     return out

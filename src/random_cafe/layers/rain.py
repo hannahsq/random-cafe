@@ -1,6 +1,6 @@
 """Rain: Poisson drop impacts, each a short tick with sometimes a Minnaert bubble (an entrained air bubble ringing at
 f = 3.26 / R Hz, R its radius in metres), on the ground around the microphone outdoors. Indoors: bright ticks on a
-window pane a few metres away plus the outdoor rain through the wall. Physics simplified from umbrella-rain
+window pane a few metres away plus the outdoor rain through the facade (windows, and the front door when it is open). Physics simplified from umbrella-rain
 (github.com/hannahsq/umbrella-rain)."""
 import numpy as np
 from scipy import signal
@@ -37,10 +37,10 @@ def field(rng: np.random.Generator, scene: Scene, rate_hz: float, glass: bool) -
     return out
 
 
-def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> np.ndarray:
+def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom, facade: spatial.Facade) -> np.ndarray:
     rate = 150.0 * scene.rain.rain_mm_h  # impacts per second heard (heuristic)
     if not scene.room.indoor:
         return field(rng, scene, rate, glass=False)
-    outdoor = spatial.transmission(field(rng, scene, rate, glass=False), scene.fs, rng.uniform(*scene.room.transmission_db))
-    pane = room.apply(field(rng, scene, rate * 0.02, glass=True), 3.0)
+    outdoor = facade(field(rng, scene, rate, glass=False), rng)
+    pane = room.apply(field(rng, scene, rate * 0.02, glass=True), 3.0, rng)
     return outdoor + pane

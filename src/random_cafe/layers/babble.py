@@ -45,5 +45,5 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom,
             theta = spatial.facing_angle(seat, np.r_[facing, 0.0], scene.mic)
             x = spatial.head_shadow(track[:n], theta, fs) * 10 ** (rng.uniform(*cfg.lombard_db) / 20)
             direct = spatial.place_static(x, seat, scene.mic, fs, n)
-            out += room.apply(direct, spatial.distance(seat, scene.mic)) if scene.room.indoor else direct
+            out += room.apply(direct, spatial.distance(seat, scene.mic), rng) if scene.room.indoor else direct
     return out

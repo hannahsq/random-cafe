@@ -37,4 +37,4 @@ def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom) -> 
     direct = spatial.place_static(x, src, scene.mic, fs, n)
     if not cfg.open:  # through a door (loss climbing only above the mid range), then into the café's room
         direct = spatial.transmission(direct, fs, rng.uniform(*cfg.wall_db), corner_hz=800.0)
-    return room.apply(direct, spatial.distance(src, scene.mic)) if scene.room.indoor else direct
+    return room.apply(direct, spatial.distance(src, scene.mic), rng) if scene.room.indoor else direct

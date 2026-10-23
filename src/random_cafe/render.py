@@ -45,6 +45,7 @@ def render(scene: Scene | None = None, talkers: Mapping[str, Sequence[str]] | No
     float audio."""
     scene = scene or Scene()
     room = spatial.SharedRoom(_rng(scene, "room"), scene.room.t60_s, scene.room.drr_db, scene.fs)
+    facade = spatial.Facade(_rng(scene, "facade"), scene.room, room, scene.fs)  # one street side for every outdoor source
     stems = {}
     if scene.babble.enabled and talkers:
         stems["babble"] = babble.render(_rng(scene, "babble"), scene, room, talkers, load) * _gain(scene, "babble", scene.babble.level_db)
@@ -53,9 +54,9 @@ def render(scene: Scene | None = None, talkers: Mapping[str, Sequence[str]] | No
     if scene.kitchen.enabled:
         stems["kitchen"] = kitchen.render(_rng(scene, "kitchen"), scene, room) * _gain(scene, "kitchen", scene.kitchen.level_db)
     if scene.traffic.enabled:
-        stems["traffic"] = traffic.render(_rng(scene, "traffic"), scene) * _gain(scene, "traffic", scene.traffic.level_db)
+        stems["traffic"] = traffic.render(_rng(scene, "traffic"), scene, facade) * _gain(scene, "traffic", scene.traffic.level_db)
     if scene.rain.enabled:
-        stems["rain"] = rain.render(_rng(scene, "rain"), scene, room) * _gain(scene, "rain", scene.rain.level_db)
+        stems["rain"] = rain.render(_rng(scene, "rain"), scene, room, facade) * _gain(scene, "rain", scene.rain.level_db)
     if scene.bed.paths:
         x = bed.render(_rng(scene, "bed"), scene, load)
         stems["bed"] = x * 10 ** ((scene.reference_dbfs + scene.bed.level_db) / 20) / (np.sqrt(np.mean(x ** 2)) + 1e-12)

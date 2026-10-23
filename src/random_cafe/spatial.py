@@ -76,26 +76,50 @@ def floor_position(rng: np.random.Generator, r_range, height: float, centre=(0.0
 
 class SharedRoom:
     """One room per scene: a T60 drawn once, every source getting its own late tail (an exponentially decaying noise
-    realisation of that T60, lower-passed as it decays) at a direct-to-reverberant ratio that falls with distance."""
+    realisation of that T60, drawn by the calling layer) at a direct-to-reverberant ratio that falls with distance."""
 
     def __init__(self, rng: np.random.Generator, t60_range, drr_range, fs: int):
-        self.fs, self.rng = fs, rng
+        self.fs = fs
         self.t60 = rng.uniform(*t60_range)
         self.drr_1m = rng.uniform(*drr_range)
 
-    def tail(self) -> np.ndarray:
+    def tail(self, rng: np.random.Generator) -> np.ndarray:
         n = int(self.t60 * self.fs)
         t = np.arange(n) / self.fs
-        h = self.rng.standard_normal(n) * 10 ** (-3 * t / self.t60)
+        h = rng.standard_normal(n) * 10 ** (-3 * t / self.t60)
         h = signal.sosfilt(signal.butter(2, 0.35 * self.fs, "lowpass", fs=self.fs, output="sos"), h)
         return h / np.sqrt(np.sum(h ** 2))
 
-    def apply(self, direct: np.ndarray, r: float) -> np.ndarray:
-        """direct (already delayed and 1 / r scaled) plus a late tail whose level does not fall with distance."""
+    def apply(self, direct: np.ndarray, r: float, rng: np.random.Generator) -> np.ndarray:
+        """direct (already delayed and 1 / r scaled) plus a late tail whose level does not fall with distance; the
+        tail's noise comes from the caller's generator, so layers stay independent of each other."""
         drr = self.drr_1m - 20 * np.log10(max(r, 0.3))
-        tail = signal.oaconvolve(direct * max(r, 0.3), self.tail())[:direct.size]
+        tail = signal.oaconvolve(direct * max(r, 0.3), self.tail(rng))[:direct.size]
         g = np.sqrt(np.mean(direct ** 2) + 1e-20) / np.sqrt(np.mean(tail ** 2) + 1e-20) * 10 ** (-drr / 20)
         return direct + g * tail
+
+
+class Facade:
+    """The café's street side, drawn once per scene so every outdoor source agrees on it: window loss, whether the
+    front door is open (and its loss), and the facade's distance from the microphone. Outdoor sound comes in through
+    the windows (mass-law loss) plus, with the front door open, through the opening (little loss, broadband), and then
+    reverberates in the café's room."""
+
+    def __init__(self, rng: np.random.Generator, room_cfg, room: "SharedRoom", fs: int):
+        self.fs, self.room, self.corner = fs, room, room_cfg.window_corner_hz
+        self.window_db = rng.uniform(*room_cfg.window_db)
+        self.door_open = bool(rng.uniform() < room_cfg.p_door_open)
+        self.door_db = rng.uniform(*room_cfg.door_db)
+        self.distance = rng.uniform(*room_cfg.facade_distance_m)
+
+    def __call__(self, x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+        y = transmission(x, self.fs, self.window_db, corner_hz=self.corner)
+        if self.door_open:
+            y = y + x * 10 ** (-self.door_db / 20)
+        # the losses are facade insulation (outdoor level minus indoor level, D = L_out - L_in, as measured), which
+        # already includes spreading and the room: the room shapes the transmitted sound but keeps its level
+        z = self.room.apply(y, self.distance, rng)
+        return z * np.sqrt(np.mean(y ** 2) / (np.mean(z ** 2) + 1e-30))
 
 
 def transmission(x: np.ndarray, fs: int, loss_db: float, corner_hz: float = 150.0) -> np.ndarray:

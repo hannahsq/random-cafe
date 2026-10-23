@@ -39,12 +39,15 @@ def test_seeded_and_deterministic():
 
 
 def test_layers_independent():
-    """switching traffic on must not change the other stems"""
-    a = render(scene(), fake_talkers(), fake_load)
-    b = render(scene(traffic__enabled=True), fake_talkers(), fake_load)
-    for k in a:
-        assert np.array_equal(a[k], b[k])
-    assert "traffic" in b
+    """switching any layer on or off must not change the others (room tails and the facade included)"""
+    names = ("babble", "clatter", "kitchen", "traffic", "rain")
+    full = render(scene(kitchen__enabled=True, traffic__enabled=True, rain__enabled=True), fake_talkers(), fake_load)
+    for off in names:
+        kw = {f"{n}__enabled": n != off for n in names}
+        part = render(scene(**kw), fake_talkers(), fake_load)
+        assert set(part) == set(full) - {off}
+        for k in part:
+            assert np.array_equal(part[k], full[k]), (off, k)
 
 
 def rms_db(x):
@@ -71,7 +74,11 @@ def test_levels_follow_the_scene():
     assert mean_db("traffic", traffic__enabled=True, traffic__vehicles_per_min=40.0, room__indoor=False) > \
         mean_db("traffic", traffic__enabled=True, traffic__vehicles_per_min=3.0, room__indoor=False) + 5
     assert mean_db("babble", babble__tables=(8, 10)) > mean_db("babble", babble__tables=(1, 1)) + 3
-    assert mean_db("traffic", traffic__enabled=True, room__indoor=True) < mean_db("traffic", traffic__enabled=True, room__indoor=False) - 15
+    outside = mean_db("traffic", traffic__enabled=True, room__indoor=False)
+    windows = mean_db("traffic", traffic__enabled=True, room__indoor=True, room__p_door_open=0.0)
+    door = mean_db("traffic", traffic__enabled=True, room__indoor=True, room__p_door_open=1.0)
+    assert outside - 30 < windows < outside - 10  # audible through the windows, well below outside
+    assert windows + 3 < door < outside  # an open front door lets in much more
     assert mean_db("kitchen", kitchen__enabled=True, kitchen__open=False) < mean_db("kitchen", kitchen__enabled=True, kitchen__open=True) - 8
 
 
@@ -82,7 +89,8 @@ def hf_share(x):
 
 def test_indoor_traffic_is_darker():
     out = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=False))["traffic"]
-    ins = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=True))["traffic"]
+    ins = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=True,
+                       room__p_door_open=0.0))["traffic"]
     assert hf_share(ins) < 0.2 * hf_share(out)
 
 
