@@ -52,9 +52,11 @@ HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses against a stock one's
 # ~1 kHz an exhaust is broadband noise, made by the flow at the tailpipe and in the silencer itself, so after the
 # silencer's attenuation: roughly flat per octave to a corner of a few kHz; each octave above 800 Hz is ~27-31 dB
 # below everything under 200 Hz at idle and 0-14 dB below at high flow (revving, or pulling hard). That growth is
-# what jet noise does: power as the gas speed^8 (Lighthill); gas speed ~ rpm x (0.5 + 0.5 load), heuristic. Those references are all performance-minded; a modern consumer car's
-# larger silencer, resonators and wider tailpipe (slower gas) are taken as 10 dB quieter (heuristic, until a reference)
-FLOW_STOCK = 10 ** (-10 / 20)
+# what jet noise does: power as the gas speed^8 (Lighthill); gas speed ~ rpm x (0.5 + 0.5 load), heuristic. A modern
+# consumer car's stock exhaust makes ~6 dB less of it than a high-flow one: fitted to a 2023 BMW X1 1.5 L turbo I3
+# (1 m from the tailpipe, 45 degrees off axis), whose octaves above 800 Hz sit ~22 dB below everything under 200 Hz at
+# idle and 10-14 dB when revving
+FLOW_STOCK = 10 ** (-6 / 20)
 FLOW_FULL = 6.0  # gas speed (rpm/1000 x (0.5 + 0.5 load)) at which the flow noise's corner is at its highest
 TURBINE = 1.3  # heuristic: a turbine takes energy from the exhaust pulses (level / TURBINE) and smears them (width x)
 COMPRESSOR = 0.4  # heuristic: the intake pulses left once they have passed back through a compressor

@@ -18,7 +18,7 @@ from .scene import Scene
 
 # 1 / (median stem RMS of the default scene for that layer at level_db 0), from calibrate.py; traffic and rain are
 # calibrated outdoors, as is wind, so indoors they come out quieter by the wall
-CAL = {"babble": 0.5035, "clatter": 50.88, "kitchen": 4.616, "traffic": 22.62, "rain": 0.9218, "wind": 0.8751}
+CAL = {"babble": 0.5035, "clatter": 50.88, "kitchen": 4.616, "traffic": 22.52, "rain": 0.9218, "wind": 0.8751}
 
 
 def default_load(path: str, fs: int) -> np.ndarray:
