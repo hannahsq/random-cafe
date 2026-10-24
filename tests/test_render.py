@@ -181,8 +181,8 @@ def test_engine_layouts():
 
 
 def test_turbo_line():
-    """The compressor's whistle is a narrow line at the shaft's blade-pass frequency, H2 about 28 dB down, and gone
-    once it would pass Nyquist."""
+    """The compressor's whistle is a narrow line at the blade-pass frequency, H2 about 28 dB down (and, for a car's
+    compressor, a half-order line about 3 dB down), and gone once it would pass Nyquist."""
     from random_cafe.layers import traffic
     fs, n = 44100, 44100
     e = dict(turbo_hz=8000.0)
@@ -191,6 +191,11 @@ def test_turbo_line():
     band = lambda lo, hi: p[(f >= lo) & (f < hi)].sum()  # noqa: E731
     assert band(4950, 5050) > 0.9 * band(3000, 7000)
     assert -33 < 10 * np.log10(band(9900, 10100) / band(4950, 5050)) < -23
+    # a car's compressor, with splitter blades: a line at half the blade-pass, ~3 dB down
+    y = traffic.turbo(np.random.default_rng(0), np.full(n, 5000.0), np.full(n, np.log(5000.0)), [],
+                      dict(turbo_hz=8000.0, split=10 ** (-3 / 20)), fs, None)
+    f, p = signal.welch(y, fs, nperseg=8192)
+    assert -4 < 10 * np.log10(band(2475, 2525) / band(4950, 5050)) < -2
     y = traffic.turbo(np.random.default_rng(0), np.full(n, 5000.0), np.full(n, np.log(5000.0)), [], e, 16000, None)
     f, p = signal.welch(y, 16000, nperseg=4096)
     assert np.all(p[f > 7300] < 1e-6 * p.max())

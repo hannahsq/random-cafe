@@ -50,13 +50,17 @@ ENGINE, EXHAUST, INTAKE, THROTTLE, TURBO, TYRE, HISS = 5.0, 1.2, 3.0, 0.05, 1.34
 HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses and flow noise against a stock one's
 TURBINE = 1.3  # heuristic: a turbine takes energy from the exhaust pulses (level / TURBINE) and smears them (width x)
 COMPRESSOR = 0.4  # heuristic: the intake pulses left once they have passed back through a compressor
-# turbo, measured on recordings (a Peterbilt 379, ~14 L; a ~2 L rally car): the compressor's blade-pass line is a
-# tone (Q above ~600, narrower than a spectrogram resolves; here narrowband noise, so it wavers a little) with H2 at
-# -28 dB and H3 at -35 dB, over a broadband pedestal with twice its power, flat from 0.4 to 1 x the line and falling
-# ~17 dB/octave above (a band-pass of Q ~0.9). At full boost the line is near 9 kHz for the truck and 13.5 kHz for the
-# rally car (smaller turbos spin faster). Within each gear the truck's line climbs from ~4 to ~8 kHz with the rpm and
-# falls at each shift, a little faster than it climbs.
-TURBO_HZ, TURBO_L, TURBO_EXP = 9000.0, 14.0, -0.2  # full-boost line: TURBO_HZ x (litres / TURBO_L) ^ TURBO_EXP
+# turbo, measured on recordings (a Peterbilt 379, ~14 L, ~350 kW; a stock Suzuki Cappuccino, 0.66 L, 47 kW): the
+# compressor's blade-pass line is a tone (Q above ~600, narrower than a spectrogram resolves; here narrowband noise,
+# so it wavers a little) with H2 at -28 dB and H3 at -35 dB, over a broadband pedestal with twice its power, flat from
+# 0.4 to 1 x the line and falling ~17 dB/octave above (a band-pass of Q ~0.9). A car's small compressor, its full
+# blades alternating with splitter blades, also has a line at half the blade-pass (the full blades alone), only ~3 dB
+# weaker (median of -2 and -3 dB over two passages; the truck's has none). The wheel's tip speed is what limits it,
+# so its shaft speed goes as 1 / diameter, and its diameter as the square root of the air it moves, i.e. of the
+# engine's power: at full boost the line is near 9 kHz for the truck and ~26 kHz for the Cappuccino (its half-line
+# reaching ~13 kHz), against 24.6 kHz from this scaling. Within each gear the truck's line climbs from ~4 to ~8 kHz
+# with the rpm and falls at each shift, a little faster than it climbs.
+TURBO_HZ, TURBO_KW = 9000.0, 350.0  # full-boost line: TURBO_HZ x (rated power / TURBO_KW) ^ -0.5
 TURBO_IDLE = 0.25  # heuristic: shaft speed with no boost, re full boost (the recording's lowest is ~0.45, mid-shift)
 TURBO_Q, TURBO_H = 400.0, (1.0, 10 ** (-28 / 20), 10 ** (-35 / 20))
 PEDESTAL = np.sqrt(2.0)  # its amplitude re the line's
@@ -94,7 +98,8 @@ KINDS = {
     # muffler: the silencer's corner, Hz; airbox: the intake's resonance, Hz; mech: the block's noise through the
     # bonnet; clatter: how much of it comes in clicks (combustion, valves; diesel knock); knock_spread: log-SD of
     # the cylinders' combustion clicks; layouts: their shares; p_turbo;
-    # p_high_flow: without and with a turbo or a V8; litres: displacement by layout; whistle: the turbo's level;
+    # p_high_flow: without and with a turbo or a V8; litres: displacement by layout; kw_per_l: a turbo engine's
+    # rated power per litre; split: its compressor's half-order line re the blade-pass (0: none); whistle: its level;
     # boost: the torque (re peak) where boost starts and where it is full: the shaft's speed traces the torque
     # curve under full load (see sound; diesels: almost from the first fuel);
     # spool_s: turbo lag (heuristic values throughout)
@@ -107,21 +112,24 @@ KINDS = {
                             "V8-cross": 0.07, "V8-flat": 0.02},
                    litres={"I3": (1.0, 1.5), "I4": (1.3, 2.5), "boxer4": (2.0, 2.5), "I6": (2.5, 3.5), "V6": (3.0, 3.8),
                            "V6-odd": (3.8, 4.3), "V8-cross": (5.0, 6.6), "V8-flat": (3.8, 5.2)},
-                   p_turbo=0.45, p_high_flow=(0.05, 0.4), whistle=3.0, boost=(0.35, 1.0), spool_s=0.4),
+                   p_turbo=0.45, p_high_flow=(0.05, 0.4), kw_per_l=70.0, split=10 ** (-3 / 20), whistle=0.9, boost=(0.35, 1.0),
+                   spool_s=0.4),
     "diesel": dict(idle=(700.0, 850.0), gears=(420, 240, 155, 115, 90, 72), torque=320.0, mass=(1300.0, 2100.0),
                    curve=((700, 1500, 1750, 2750, 4000, 4800), (0.45, 0.85, 1.0, 1.0, 0.75, 0.4)),
                    cda=0.7, shift=(1600.0, 2800.0), manual=False, length=4.6, level=1.3, throttled=False,
                    pulse_deg=(40.0, 28.0), muffler=180.0, airbox=400.0, mech=0.15, clatter=0.7, knock_spread=0.35,
                    layouts={"I3": 0.03, "I4": 0.75, "I6": 0.12, "V6": 0.1},
                    litres={"I3": (1.4, 1.6), "I4": (1.5, 2.2), "I6": (3.0, 3.5), "V6": (2.7, 3.3)},
-                   p_turbo=1.0, p_high_flow=(0.02, 0.05), whistle=1.34, boost=(0.25, 0.95), spool_s=0.4),
+                   p_turbo=1.0, p_high_flow=(0.02, 0.05), kw_per_l=55.0, split=10 ** (-3 / 20), whistle=0.4,
+                   boost=(0.25, 0.95), spool_s=0.4),
     "heavy": dict(idle=(600.0, 750.0), gears=(760, 560, 410, 300, 220, 165, 125, 95), torque=1800.0,
                   mass=(12000.0, 40000.0), cda=6.0,
                   curve=((550, 1000, 1150, 1400, 1700, 1900, 2100), (0.5, 0.9, 1.0, 1.0, 0.8, 0.55, 0.0)), shift=(1500.0, 1900.0), manual=True, length=12.0, level=3.0, throttled=False,
                   pulse_deg=(40.0, 25.0), muffler=150.0, airbox=300.0, mech=0.16, clatter=0.6, knock_spread=0.35,
                   layouts={"I6": 0.85, "V8-cross": 0.15},
                   litres={"I6": (11.0, 16.0), "V8-cross": (13.0, 16.5)},
-                  p_turbo=1.0, p_high_flow=(0.0, 0.0), whistle=0.5, boost=(0.25, 0.95), spool_s=0.5),
+                  p_turbo=1.0, p_high_flow=(0.0, 0.0), kw_per_l=25.0, split=0.0, whistle=0.4, boost=(0.25, 0.95),
+                  spool_s=0.5),
 }
 
 
@@ -273,7 +281,7 @@ def engine(rng: np.random.Generator, car: dict) -> dict:
                 amp=rng.uniform(0.9, 1.1, fire.size) * path_amp[bank],
                 arrive=fire + np.array(lay.get("lag", (0,) * fire.size), float) + path_lag[bank],
                 # the turbo matched to the engine (smaller ones spin faster), give or take
-                turbo_hz=TURBO_HZ * (litres / TURBO_L) ** TURBO_EXP * rng.uniform(0.9, 1.1),
+                turbo_hz=TURBO_HZ * (k["kw_per_l"] * litres / TURBO_KW) ** -0.5 * rng.uniform(0.9, 1.1), split=k["split"],
                 # how hard each cylinder's combustion and each valve click (cylinders differ)
                 knock=rng.lognormal(0.0, k["knock_spread"], fire.size),
                 valves=VALVE_LEVEL * rng.lognormal(0.0, VALVE_SPREAD, (len(VALVE_DEG), fire.size)))
@@ -309,12 +317,13 @@ def pedestal(r: np.ndarray) -> np.ndarray:
 
 
 def turbo(rng: np.random.Generator, f: np.ndarray, log_f: np.ndarray, bands, e: dict, fs: int, seg) -> np.ndarray:
-    """The compressor at unit line level: the blade-pass line and its harmonics as narrowband noise around the
-    shaft's frequency f (per sample), each faded out before Nyquist, and the pedestal from the half-octave noise
+    """The compressor at unit line level: the blade-pass line, its harmonics and (with splitter blades) its half-order
+    line as narrowband noise around the blade-pass frequency f (per sample), each faded out before Nyquist, and the
+    pedestal from the half-octave noise
     bands, weighted around f (its power is counted over bands up to 64 x f, so what lies above Nyquist is lost)."""
     phase = 2 * np.pi * np.cumsum(f) / fs
     y = np.zeros(f.size)
-    for h, a in enumerate(TURBO_H, 1):
+    for h, a in [(0.5, e.get("split", 0.0))] * bool(e.get("split")) + list(zip((1, 2, 3), TURBO_H)):
         nyq = np.clip((0.45 * fs - h * f) / (0.05 * fs), 0.0, 1.0)
         if not nyq.any():
             break
