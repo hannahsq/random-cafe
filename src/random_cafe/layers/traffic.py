@@ -46,8 +46,16 @@ STOP_DECEL = 4.0  # m/s^2: at amber or red, a driver who would have to brake har
 TABLE = 2048  # engine wavetable length
 HARMONICS = 64  # of the engine cycle kept in its wavetables (64 x 50 Hz at 6000 rpm, well below Nyquist)
 # heuristic levels at 1 m against a car's tyres at 15 m/s
-ENGINE, EXHAUST, INTAKE, THROTTLE, TURBO, TYRE, HISS = 5.0, 1.2, 3.0, 0.05, 1.34, 1.0, 2.0
-HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses and flow noise against a stock one's
+ENGINE, EXHAUST, INTAKE, THROTTLE, TURBO, TYRE, HISS = 5.0, 0.6, 3.0, 0.05, 1.34, 1.0, 2.0
+HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses against a stock one's
+# exhaust flow noise, from recordings (a Hayabusa straight-piped and stock, a Suzuki Cappuccino on a dyno): above
+# ~1 kHz an exhaust is broadband noise, made by the flow at the tailpipe and in the silencer itself, so after the
+# silencer's attenuation: roughly flat per octave to a corner of a few kHz; each octave above 800 Hz is ~27-31 dB
+# below everything under 200 Hz at idle and 0-14 dB below at high flow (revving, or pulling hard). That growth is
+# what jet noise does: power as the gas speed^8 (Lighthill); gas speed ~ rpm x (0.5 + 0.5 load), heuristic. Those references are all performance-minded; a modern consumer car's
+# larger silencer, resonators and wider tailpipe (slower gas) are taken as 10 dB quieter (heuristic, until a reference)
+FLOW_STOCK = 10 ** (-10 / 20)
+FLOW_FULL = 6.0  # gas speed (rpm/1000 x (0.5 + 0.5 load)) at which the flow noise's corner is at its highest
 TURBINE = 1.3  # heuristic: a turbine takes energy from the exhaust pulses (level / TURBINE) and smears them (width x)
 COMPRESSOR = 0.4  # heuristic: the intake pulses left once they have passed back through a compressor
 # turbo, measured on recordings (a Peterbilt 379, ~14 L, ~350 kW; a stock Suzuki Cappuccino, 0.66 L, 47 kW): the
@@ -368,7 +376,9 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
             d = target[j] - spool[j - 1]
             spool[j] = spool[j - 1] + d * (up if d > 0 else down)
     f_line = e["turbo_hz"] * (TURBO_IDLE + (1 - TURBO_IDLE) * spool)
-    gains = (tone * (1 - load), tone * load, EXHAUST * lv * load * r1k * exh, k["mech"] * lv * r1k ** 2 * (0.5 + 0.5 * load),
+    gas = r1k * (0.5 + 0.5 * load)  # the exhaust gas's speed, roughly
+    flow = EXHAUST * lv * gas ** 4 * (1.0 if e["high_flow"] else FLOW_STOCK)  # power as speed^8 (Lighthill)
+    gains = (tone * (1 - load), tone * load, flow, k["mech"] * lv * r1k ** 2 * (0.5 + 0.5 * load),
              TYRE * (v / 15.0) ** 2 * (1.5 if car["kind"] == "heavy" else 1.0) * fade,
              INTAKE * lv * r1k ** 1.5 * breathe * (COMPRESSOR if e["turbo"] else 1.0), hiss,
              # the compressor's pressure rise goes as its tip speed^2 (Euler) and the noise's amplitude as boost^2:
@@ -391,10 +401,13 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
     seg = lambda bank: bank[(o := int(rng.integers(0, bank.size - m))):o + m]  # noqa: E731
     corner = min(1000.0 + 60.0 * v[fade > 0].max(), 0.45 * fs)  # faster: brighter
     tyre = signal.sosfilt(signal.butter(2, [300.0, corner], "bandpass", fs=fs, output="sos"), seg(banks["tyre"]))
-    x = g_soft * soft[pos] + g_hard * hard[pos] + g_exh * seg(banks["exhaust"]) * (0.5 + 0.5 * gate)
+    x = g_soft * soft[pos] + g_hard * hard[pos]
     # the silencer; a high-flow one is freer: gentler, and higher
     order, f_m = (2, 2.5 * k["muffler"]) if e["high_flow"] else (4, k["muffler"])
     x = signal.sosfilt(signal.butter(order, min(f_m, 0.45 * fs), "lowpass", fs=fs, output="sos"), x)
+    # then the flow noise made at the tailpipe, pulsing with the exhaust, brighter as the gas speeds up
+    bright = np.interp(te, t, np.clip(gas / FLOW_FULL, 0.0, 1.0))
+    x += g_exh * (np.sqrt(1 - bright) * seg(banks["flow"]) + np.sqrt(bright) * seg(banks["flow_bright"])) * (0.5 + 0.5 * gate)
     x += signal.lfilter(*resonant_lowpass(k["airbox"], 2.0, fs), g_in * inlet[pos])  # a plastic airbox: little damping
     x += g_mech * seg(banks["mech"]) * (1 - k["clatter"] + k["clatter"] * knock) + g_tyre * tyre / (np.std(tyre) + 1e-12)
     x += g_hiss * seg(banks["hiss"])
@@ -427,9 +440,10 @@ def render(rng: np.random.Generator, scene: Scene, facade: spatial.Facade, rx: s
     nb = te.size + 4 * fs  # noise banks: each vehicle reads its own stretch
     bp = lambda lo, hi, x: signal.sosfilt(signal.butter(2, [lo, hi], "bandpass", fs=fs, output="sos"), x)  # noqa: E731
     banks = {"tyre": coloured_noise(rng, nb, 3.0, fs), "mech": bp(300.0, 1500.0, rng.standard_normal(nb)),
-             "exhaust": signal.sosfilt(signal.butter(2, 400.0, "lowpass", fs=fs, output="sos"), coloured_noise(rng, nb, 3.0, fs)),
              "hiss": bp(1500.0, min(6000.0, 0.45 * fs), rng.standard_normal(nb))}
-    for key in ("mech", "exhaust", "hiss"):
+    pink = coloured_noise(rng, nb, 3.0, fs)  # exhaust flow noise: flat per octave from 150 Hz to a corner
+    banks["flow"], banks["flow_bright"] = (bp(150.0, min(c, 0.45 * fs), pink) for c in (2000.0, 6000.0))
+    for key in ("mech", "hiss", "flow", "flow_bright"):
         banks[key] /= np.std(banks[key])
     # turbo: overlapping half-octave bands from 700 Hz, which each turbo weights around its centre
     centres = [c for c in 700.0 * 2 ** (np.arange(12) / 2) if c * 2 ** 0.35 < 0.45 * fs]
