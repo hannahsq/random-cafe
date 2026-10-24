@@ -145,11 +145,13 @@ class Facade:
         return z * np.sqrt(np.mean(y ** 2) / (np.mean(z ** 2) + 1e-30))
 
 
-def transmission(x: np.ndarray, fs: int, loss_db: float, corner_hz: float = 150.0) -> np.ndarray:
-    """Outdoor sound through a wall or window: mass-law-like (about 6 dB more loss per octave above the corner)
-    plus a broadband loss."""
+def transmission(x: np.ndarray, fs: int, loss_db: float, corner_hz: float = 150.0, hf_db: float = 6.0) -> np.ndarray:
+    """Outdoor sound through a wall or window: a broadband loss, plus more above the corner (mass law, ~6 dB per
+    octave) up to hf_db more: a real facade's insulation levels off (leaks, the coincidence dip of its glazing)
+    rather than growing without end (heuristic)."""
     sos = signal.butter(1, corner_hz, "lowpass", fs=fs, output="sos")
-    return signal.sosfilt(sos, x) * 10 ** (-loss_db / 20)
+    lo = signal.sosfilt(sos, x)
+    return (lo + (x - lo) * 10 ** (-hf_db / 20)) * 10 ** (-loss_db / 20)
 
 
 def diffuse(x: np.ndarray, rng: np.random.Generator, fs: int, crossover_hz: float = 700.0) -> np.ndarray:

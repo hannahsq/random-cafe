@@ -238,7 +238,8 @@ def hf_share(x):
 
 
 def test_indoor_traffic_is_darker():
-    """the windows' insulation climbs with frequency (mass law), so the facade takes far more off the highs"""
+    """the windows' insulation climbs with frequency (mass law) and then levels off (leaks, the glazing's coincidence
+    dip): the facade takes more off the highs, but only so much more"""
     out = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=False))["traffic"]
     ins = render(scene(traffic__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=True,
                        room__p_door_open=0.0))["traffic"]
@@ -249,7 +250,7 @@ def test_indoor_traffic_is_darker():
 
     loss_low = band_db(out, 50, 300) - band_db(ins, 50, 300)
     loss_high = band_db(out, 1000, 4000) - band_db(ins, 1000, 4000)
-    assert loss_high > loss_low + 8
+    assert loss_low + 3 < loss_high < loss_low + 10
 
 
 def test_closed_kitchen_is_darker():

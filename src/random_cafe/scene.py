@@ -11,10 +11,12 @@ class Room:
     # outdoor sources heard indoors come in through the facade: windows (the weakest part of a wall, so they set the
     # loss) and, often in a café, an open front door (an opening: little loss, almost no filtering). Losses are facade
     # insulation, outdoor level minus indoor level, so they already include spreading and the room
-    window_db: tuple[float, float] = (18.0, 28.0)
+    # heuristic: a cafe's facade is leaky (windows ajar, gaps, often single glazing), so traffic and rain stay
+    # audible indoors, as wanted for augmentation (a sealed modern facade takes 25-30 dB(A))
+    window_db: tuple[float, float] = (6.0, 12.0)
     window_corner_hz: float = 400.0
     p_door_open: float = 0.5
-    door_db: tuple[float, float] = (8.0, 15.0)
+    door_db: tuple[float, float] = (2.0, 6.0)
     facade_distance_m: tuple[float, float] = (3.0, 8.0)  # from the facade to the microphone
 
 
@@ -49,7 +51,7 @@ class Kitchen:
     distance_m: tuple[float, float] = (5.0, 12.0)
     clatter_rate_hz: float = 3.0
     steam_rate_hz: float = 0.08
-    wall_db: tuple[float, float] = (12.0, 25.0)  # a door or partition, less than an outside wall
+    wall_db: tuple[float, float] = (6.0, 14.0)  # a door or partition, less than an outside wall (often ajar)
 
 
 @dataclass

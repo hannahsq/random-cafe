@@ -27,7 +27,7 @@ def cafe_quiet(s):
     _tables(s, 1, 2)
     s.babble.lombard_db = (-4.0, 0.0)  # people talk more softly in a quiet room
     s.babble.level_db -= 3.0
-    s.clatter.level_db -= 3.0  # and handle cutlery more carefully (the clatter-to-voice balance unchanged)
+    s.clatter.level_db -= 8.0  # and handle cutlery more carefully (still a few dB under the voices)
     return s
 
 
@@ -97,6 +97,7 @@ def street_cafe(s):
     s.room.indoor = False
     _tables(s, 3, 8)
     s.traffic.vehicles_per_min = 15.0
+    s.traffic.level_db -= 6.0  # the voices at the tables stay on top of the street
     return s
 
 
@@ -104,6 +105,7 @@ def street_cafe_rain(s):
     s = street_cafe(s)  # the regulars stay out in it
     _only(s, "babble", "clatter", "traffic", "rain", "wind")
     s.rain.rain_mm_h = 8.0
+    s.rain.level_db -= 6.0  # under an awning: heard around the tables, not on top of them
     s.wind.speed_ms = 5.0
     return s
 
