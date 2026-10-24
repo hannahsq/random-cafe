@@ -69,6 +69,29 @@ def mean_db(layer, seeds=range(4), **kw):
     return np.mean([rms_db(render(scene(seed=s, **kw), fake_talkers(30), fake_load)[layer]) for s in seeds])
 
 
+def test_full_band_rates():
+    """at 44.1 and 48 kHz every layer renders, reaches above 8 kHz, and keeps its 16 kHz level (one calibration)"""
+    from random_cafe.scene import SAMPLE_RATES
+    kw = dict(kitchen__enabled=True, traffic__enabled=True, rain__enabled=True, wind__enabled=True, room__indoor=False)
+    base = {k: [] for k in ("babble", "clatter", "kitchen", "traffic", "rain", "wind")}
+    levels = {fs: {k: [] for k in base} for fs in SAMPLE_RATES}
+    for fs in SAMPLE_RATES:
+        for seed in range(6):
+            s = scene(seed=seed, **kw)
+            s.fs, s.duration_s = fs, 3.0
+            for k, x in render(s, fake_talkers(30), fake_load).items():
+                assert np.all(np.isfinite(x))
+                levels[fs][k].append(rms_db(x))
+                if fs > 16000 and k in ("rain", "clatter"):
+                    f, p = signal.welch(x, fs, nperseg=1024)
+                    assert p[f > 9000].sum() > 1e-3 * p.sum()
+    for fs in SAMPLE_RATES[1:]:
+        # median over seeds (one near vehicle can set a short clip's level); clatter is too sparse for short clips
+        # even so (one near impact sets the level), and agrees within a dB over 8 x 20 s
+        for k in set(base) - {"clatter"}:
+            assert abs(np.median(levels[fs][k]) - np.median(levels[16000][k])) < 3.0, (fs, k)
+
+
 def test_levels_follow_the_scene():
     """intensities are physical: heavier rain, denser traffic and more tables are louder; walls make things quieter"""
     assert mean_db("rain", rain__enabled=True, rain__rain_mm_h=30.0) > mean_db("rain", rain__enabled=True, rain__rain_mm_h=1.5) + 10
@@ -111,6 +134,66 @@ def test_traffic_flow_and_engines():
     still = car["on"] & (car["v"] < 0.1) & (np.abs(car["acc"]) < 0.05)
     assert 550 < np.median(rpm[still]) < 850
     assert rpm[car["on"] & (car["acc"] > 0.5)].max() > 1500
+
+
+def test_heavy_shifts():
+    """A prime mover's shifts take a second or so off the throttle (double-clutched), with the engine falling to
+    the next gear's speed rather than jumping to it."""
+    from random_cafe.layers import traffic
+    t = np.arange(0, 40, traffic.DT)
+    v = np.minimum(0.5 * t, 20.0)
+    car = dict(kind="heavy", aggr=0.5, layout="I6", turbo=True, high_flow=False, mass=30000.0)
+    rpm, load = traffic.drive(np.random.default_rng(0), car, v, np.gradient(v, t))
+    off = np.flatnonzero(np.diff((load < 0.15).astype(int)))  # load is smoothed: a lower threshold sees less
+    gaps = (off[1::2] - off[::2])[: (off.size // 2)] * traffic.DT
+    assert gaps.size >= 4 and np.all((gaps > 0.7) & (gaps < 2.5))
+    assert np.abs(np.diff(rpm)).max() < 1.5 * traffic.REV_BLIP * traffic.DT
+
+
+def test_vehicle_parts_add_up():
+    """each part of a vehicle's sound can be heard alone, and the parts add up to the whole"""
+    from random_cafe import spatial
+    from random_cafe.layers import traffic
+    s = scene(traffic__enabled=True, traffic__vehicles_per_min=30.0, traffic__bed_db=-np.inf, room__indoor=False)
+    rx = spatial.Receiver(s.mic, s.fs, int(s.duration_s * s.fs))
+    room = spatial.SharedRoom(np.random.default_rng(0), s.room.t60_s, s.room.drr_db, s.fs)
+    facade = spatial.Facade(np.random.default_rng(1), s.room, room, s.fs, rx)
+    run = lambda parts: traffic.render(np.random.default_rng(2), s, facade, rx, parts=parts)  # noqa: E731
+    whole = run(traffic.PARTS)
+    parts = [run((p,)) for p in traffic.PARTS]
+    assert np.abs(sum(parts) - whole).max() < 1e-9 * np.abs(whole).max() + 1e-12
+    assert sum(np.mean(x ** 2) > 0 for x in parts) >= 5
+
+
+def test_engine_layouts():
+    """A flat-plane V8's banks each fire evenly (every 180 degrees: only every fourth cycle harmonic); a cross-plane
+    V8's do not, which is its burble. The same gas released sharply makes a stronger, brighter firing order."""
+    from random_cafe.layers import traffic
+    for name, uneven in (("V8-flat", False), ("V8-cross", True)):
+        lay = traffic.LAYOUTS[name]
+        at = np.array(lay["fire"], float)[np.array(lay["bank"]) == 0]
+        spec = np.abs(np.fft.rfft(traffic.pulses(at, np.ones(at.size), 30.0)))[1:traffic.HARMONICS + 1]
+        off = np.arange(1, traffic.HARMONICS + 1) % 4 != 0
+        assert (spec[off].max() > 0.1 * spec.max()) == uneven
+    at = np.array(traffic.LAYOUTS["I4"]["fire"], float)
+    soft, sharp = (np.abs(np.fft.rfft(traffic.pulses(at, np.ones(4), w))) for w in (80.0, 20.0))
+    assert sharp[4] > soft[4] and sharp[20] / sharp[4] > 2 * soft[20] / soft[4]  # 4: the firing order
+
+
+def test_turbo_line():
+    """The compressor's whistle is a narrow line at the shaft's blade-pass frequency, H2 about 28 dB down, and gone
+    once it would pass Nyquist."""
+    from random_cafe.layers import traffic
+    fs, n = 44100, 44100
+    e = dict(turbo_hz=8000.0)
+    y = traffic.turbo(np.random.default_rng(0), np.full(n, 5000.0), np.full(n, np.log(5000.0)), [], e, fs, None)
+    f, p = signal.welch(y, fs, nperseg=8192)
+    band = lambda lo, hi: p[(f >= lo) & (f < hi)].sum()  # noqa: E731
+    assert band(4950, 5050) > 0.9 * band(3000, 7000)
+    assert -33 < 10 * np.log10(band(9900, 10100) / band(4950, 5050)) < -23
+    y = traffic.turbo(np.random.default_rng(0), np.full(n, 5000.0), np.full(n, np.log(5000.0)), [], e, 16000, None)
+    f, p = signal.welch(y, 16000, nperseg=4096)
+    assert np.all(p[f > 7300] < 1e-6 * p.max())
 
 
 def test_wind():

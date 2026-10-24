@@ -12,13 +12,15 @@ Seeded background scenes rendered as separate stems at one microphone: babble fr
 - `src/random_cafe/layers/`: one module per stem (`noise.py`: coloured and OU noise they share). Traffic is simulated first (`traffic.simulate`, IDM), then sounded (`drive`: gearbox, rpm and load; `sound`).
 - `src/random_cafe/presets.py`: named scenes and `random_scene(seed)`.
 - `calibrate.py`: recomputes `CAL`.
-- `demos.py`: renders listening demos (scenes, stems, speech at set SNRs, binaural with `--sofa`) into `listen/` (gitignored), with each render's speed.
+- `demos.py`: renders listening demos (scenes, stems, speech at set SNRs, single vehicles, binaural with `--sofa`) into `listen/` (gitignored), with each render's speed.
 - `tests/test_render.py`.
 
 ## Running
 
 - Tests: `python -m pytest -q` (pytest finds `src` via `pyproject.toml`). The local `.venv` has the test, audio and binaural extras: `pip install -e .[test,audio,binaural]`.
 - Demo: `python -m random_cafe out/ --preset rainy-cafe --talkers talkers.tsv` (TSV: speaker, path).
+- Sample rates: 16 kHz default; 44.1 and 48 kHz supported (`scene.SAMPLE_RATES`, tested to keep every layer's level, so `CAL` is shared). Calibrate at 16 kHz.
+- `data/` (gitignored) holds reference recordings for eval only: no licence, never commit them.
 
 ## Invariants (tested; keep them)
 

@@ -19,7 +19,7 @@ def main():
     ap.add_argument("--random", action="store_true", help="draw the layers and intensities from --seed")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--duration", type=float, default=10.0)
-    ap.add_argument("--fs", type=int, default=16000)
+    ap.add_argument("--fs", type=int, default=16000, help="sample rate: 16000, or 44100 / 48000 for full band")
     ap.add_argument("--outdoor", action="store_true")
     ap.add_argument("--indoor", action="store_true")
     ap.add_argument("--no-babble", action="store_true")

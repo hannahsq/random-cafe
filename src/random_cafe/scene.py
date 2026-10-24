@@ -111,10 +111,15 @@ class Bed:
     paths: tuple[str, ...] = ()
 
 
+# 16 kHz for speech models; 44.1 or 48 kHz for full-band ones (a small turbo's whistle, the top of rain and hiss).
+# Any rate renders; at these the layers' levels agree within about a dB (tested), so one calibration serves them all
+SAMPLE_RATES = (16000, 44100, 48000)
+
+
 @dataclass
 class Scene:
     duration_s: float = 10.0
-    fs: int = 16000
+    fs: int = 16000  # see SAMPLE_RATES
     seed: int = 0
     mic: tuple[float, float, float] = (0.0, 0.0, 1.2)
     listener_yaw_deg: float = 90.0  # binaural renders only: the way the head faces (90: +y, the street side)

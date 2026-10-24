@@ -5,3 +5,4 @@ out/
 *.wav
 .venv/
 listen/
+data/
