@@ -1,7 +1,8 @@
 """Render the listening demos into listen/ (gitignored): every preset plus a few variants and random scenes as mixes
 (listen/scenes) and stems (listen/stems/<scene>); with --speech-root, read speech mixed with some of the scenes at
 set SNRs (listen/speech); single vehicles cruising past, pulling away (gently and hard) and stopping, outdoors 8 m
-from the kerb (listen/vehicles), one of each engine layout pulling away both ways (listen/vehicles/engines), and a
+from the kerb, and an X1-like engine revving on the spot 1 m from its tailpipe (raw, and as a camera's automatic gain
+would have it) (listen/vehicles), one of each engine layout pulling away both ways (listen/vehicles/engines), and a
 few engines part by part (listen/components/<engine>_<manoeuvre>/<part>.wav; all.wav is their sum). With --sofa, the
 scenes and vehicles are also rendered binaurally (listen/binaural, listen/vehicles/binaural, for headphones). With
 --fs 44100 or 48000, full-band versions go to listen/fs44100 or listen/fs48000. Prints each render's speed in
@@ -82,18 +83,53 @@ ENGINES = [("petrol", "I3", True, False), ("petrol", "I4", True, False), ("petro
            ("diesel", "V6", True, False), ("heavy", "V8-cross", True, False, 40000.0)]
 
 
+# revving on the spot, like the X1 recording (data/2023_bmw_x1_1.5l_stationary.flac): idle, up to a ~3000 rpm hold, a
+# step to 4500, three blips to 6000, back to idle (17 s)
+REV_T = [-10, 1.0, 2.0, 4.5, 5.0, 6.3, 6.55, 7.45, 7.75, 8.0, 8.9, 9.2, 9.45, 10.35, 15.35, 17.0]
+REV_RPM = [1000, 1000, 2800, 3100, 4500, 4500, 6000, 3600, 3600, 6000, 3600, 3600, 6000, 3600, 1000, 1000]
+X1 = dict(layout="I3", turbo=True, high_flow=False, litres=1.5)
+
+
+def agc(y: np.ndarray, ratio=20.0, attack_s=0.02, release_s=0.5, target_db=-20.0) -> np.ndarray:
+    """a recorder's automatic gain control, as fitted to the X1 recording (so renders compare with it by ear): an
+    envelope follower on 10 ms frames driving a 20:1 compressor; peaks kept below -1 dBFS"""
+    hop = FS // 100
+    lvl = 10 * np.log10(np.mean(y[: y.size // hop * hop].reshape(-1, hop) ** 2, axis=1) + 1e-12)
+    env, e = np.empty_like(lvl), lvl[0]
+    for i, v in enumerate(lvl):
+        a = np.exp(-0.01 / (attack_s if v > e else release_s))
+        e = a * e + (1 - a) * v
+        env[i] = e
+    z = y * 10 ** (np.interp(np.arange(y.size), np.arange(env.size) * hop + hop / 2, (target_db - env) * (1 - 1 / ratio)) / 20)
+    return z * min(1.0, 10 ** (-1 / 20) / np.abs(z).max())
+
+
 def vehicle(kind: str, engine: dict, manoeuvre: str, dur: float, hrtf=None, parts=traffic.PARTS) -> np.ndarray:
     """one vehicle on an otherwise empty street (no road bed), 6 dB below the level it has in the street scenes (so
-    that the loudest, alone and near, do not clip)"""
+    that the loudest, alone and near, do not clip); revving: on the spot, the tailpipe ~1 m from the microphone at 45
+    degrees, peaking at -1 dBFS"""
     scene = Scene(seed=1, duration_s=dur, fs=FS)
     scene.room.indoor, scene.traffic.bed_db = False, -np.inf
     t = np.arange(-10.0, dur + traffic.DT, traffic.DT)
-    x, v, acc = trajectory(manoeuvre, kind == "heavy", t, dur)
-    car = dict(kind=kind, aggr=1.0 if manoeuvre.startswith("hard") else 0.5, on=np.ones(t.size, bool), x=x, y=8.0, v=v, acc=acc, **engine)
+    if manoeuvre == "revving":
+        # in neutral the throttle mostly accelerates the crank: load follows the rate of rise (full at 5000 rpm/s),
+        # a little to hold the revs, almost none as they fall
+        rpm = np.interp(t, REV_T, REV_RPM)
+        drpm = np.gradient(rpm, t)
+        load = np.clip(np.where(drpm > 50, 0.1 + drpm / 5000, np.where(drpm < -50, 0.02, 0.1)), 0.02, 1.0)
+        length = traffic.KINDS[kind]["length"]
+        car = dict(kind=kind, aggr=0.5, on=np.ones(t.size, bool), x=np.full(t.size, 0.7 + 0.5 * length), y=0.7,
+                   v=np.zeros(t.size), acc=np.zeros(t.size), rpm=rpm, load=load, heading=1.0, **engine)
+    else:
+        x, v, acc = trajectory(manoeuvre, kind == "heavy", t, dur)
+        car = dict(kind=kind, aggr=1.0 if manoeuvre.startswith("hard") else 0.5, on=np.ones(t.size, bool), x=x, y=8.0,
+                   v=v, acc=acc, **engine)
     rx = spatial.Receiver(scene.mic, FS, int(dur * FS), hrtf, scene.listener_yaw_deg)
     room = spatial.SharedRoom(_rng(scene, "room"), scene.room.t60_s, scene.room.drr_db, FS)
     facade = spatial.Facade(_rng(scene, "facade"), scene.room, room, FS, rx)
     y = traffic.render(_rng(scene, "traffic"), scene, facade, rx, sim=(t, [car]), parts=parts)
+    if manoeuvre == "revving":
+        return y * 10 ** (-1 / 20) / np.abs(y).max()
     return 0.5 * y * _gain(scene, "traffic", scene.traffic.level_db)
 
 
@@ -103,6 +139,9 @@ def vehicles(dur: float, hrtf=None) -> dict:
         for manoeuvre in ("cruise", "pull-away", "hard-pull-away", "stop"):
             name = f"{kind}_{engine['layout']}{'-turbo' if engine['turbo'] else ''}_{manoeuvre}"
             out[name] = vehicle(kind, engine, manoeuvre, dur, hrtf)
+    out["petrol_I3-1.5L-turbo_revving-1m"] = rev = vehicle("petrol", X1, "revving", 17.0, hrtf)
+    if hrtf is None:  # as the X1 recording's camera heard it
+        out["petrol_I3-1.5L-turbo_revving-1m_agc"] = agc(rev)
     for kind, layout, turbo, high_flow, *mass in ENGINES:
         engine = dict(layout=layout, turbo=turbo, high_flow=high_flow, **(dict(mass=mass[0]) if mass else {}))
         for manoeuvre in ("pull-away", "hard-pull-away"):
@@ -196,7 +235,7 @@ def main():
     t = time.perf_counter()
     for name, x in vehicles(a.duration).items():
         write(root / "vehicles" / f"{name}.wav", x)
-    print(f"single vehicles: {2 * len(ENGINES) + 12} at {(2 * len(ENGINES) + 12) * a.duration / (time.perf_counter() - t):6.0f}x real time")
+    print(f"single vehicles: {2 * len(ENGINES) + 14} at {(2 * len(ENGINES) + 14) * a.duration / (time.perf_counter() - t):6.0f}x real time")
     t = time.perf_counter()
     comp = components(a.duration)
     for name, x in comp.items():

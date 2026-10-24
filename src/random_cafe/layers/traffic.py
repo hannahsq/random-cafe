@@ -45,8 +45,41 @@ AMBER_S = 3.0
 STOP_DECEL = 4.0  # m/s^2: at amber or red, a driver who would have to brake harder than this carries on
 TABLE = 2048  # engine wavetable length
 HARMONICS = 64  # of the engine cycle kept in its wavetables (64 x 50 Hz at 6000 rpm, well below Nyquist)
+# a stock petrol exhaust, fitted to a 2023 BMW X1 1.5 L turbo I3 revving on the spot (1 m from the tailpipe at 45
+# degrees; listened to and measured through the recorder's automatic gain, emulated): pulses with a steep front
+# (PULSE_RISE of their width) and harmonics to 128 cycle orders, rolling off smoothly above TONE_CEILING, mixed with
+# white-ish noise at FLOOR x their level, through the silencer's measured response (SHELF_DB, SHELF_PEAKS); below
+# RES_CUT its resonances are driven harder as the throttle opens (revving on the spot, the load is the crank's
+# acceleration), and the tones depend less on load than elsewhere (SHELF_TONE_LOAD). Diesels, trucks and high-flow
+# exhausts keep the simpler silencer until there are references for them
+PULSE_RISE = 0.03
+# averaged over rpm so the harmonics fill it in: resonances at ~110, ~205, ~307 (the strongest, 17 dB clear), ~377,
+# ~490, ~689 Hz, broad ones at ~1.0 and ~1.2-1.4 kHz, a trough at 240-280 Hz, the fall above 390 Hz; above 480 Hz
+# raised to make up for the model's pulses being poorer in high harmonics than the real ones
+SHELF_DB = ((0, 0.0), (90, -2.0), (110, 1.0), (130, -3.0), (160, -5.0), (185, -3.0), (205, 2.0), (225, -4.0),
+            (250, -11.0), (270, -10.0), (290, -2.0), (307, 8.0), (325, 0.0), (345, -1.0), (377, 4.0), (392, 0.0),
+            (410, -7.0), (440, -14.0), (470, -12.0), (490, 1.0), (510, -2.0), (600, -3.0), (650, -3.0), (689, 0.0),
+            (730, -3.0), (800, -3.0), (900, -2.0), (1000, 6.0), (1200, 5.0), (1400, 6.5), (1500, 4.0), (1600, 4.0),
+            (1800, 3.0), (2000, 4.0), (3000, 2.0), (6000, -4.0), (12000, -10.0), (24000, -16.0))
+# and its higher resonances (90th-percentile spectrum, alike idling and revving): (Hz, dB, width re frequency), at
+# 0.8 x their measured prominence (which the harmonics also lift)
+SHELF_PEAKS = ((1700, 4.4, 0.015), (1795, 1.5, 0.015), (1910, 1.6, 0.015), (2100, 2.1, 0.015), (2395, 3.6, 0.015),
+               (2737, 2.5, 0.015), (2880, 2.2, 0.015), (3195, 3.3, 0.015), (3390, 1.8, 0.015), (3800, 1.6, 0.015),
+               (3944, 2.5, 0.015), (4330, 3.0, 0.015), (4893, 2.8, 0.015), (6410, 2.6, 0.015), (6775, 1.9, 0.015),
+               (7620, 1.6, 0.06), (8720, 2.5, 0.015))
+SHELF_TONE_LOAD = (0.7, 0.3)  # the tones' level as a + b x load (elsewhere 0.25 + 0.75 load)
+RES_CUT, RES_BOOST = 430.0, 3.5  # below RES_CUT the resonances are driven harder with load: x (1 + RES_BOOST load),
+# load capped at 0.5 (fitted revving on the spot, where it stays low; heuristic beyond)
+X1_GAIN = 0.065  # its overall level (the fit sets the shape): the stock petrol tones as loud as before it
+FLOOR = 0.15  # white-ish noise in the source, 300 Hz-8 kHz, at this ratio to the tones (growing with rpm and load)
+TONE_CEILING = 1300.0  # the harmonics roll off smoothly above it (third order), mostly gone by 2 kHz
+# every engine: each cylinder's exhaust pulse arrives at its own crank angle (unequal runners: SD 5 degrees) and level
+# (log-SD 0.25), and no two firings are alike (log-SD 0.2), so lines appear between the firing harmonics (the X1's
+# sit ~12 dB below them); and every vehicle is heard from two places, its exhaust at the back and the rest from the
+# engine bay, whose sounds reach a listener by different paths (combing as the revs sweep, as recorded)
+CYL_LAG, CYL_SPREAD, FIRING_SPREAD = 5.0, 0.25, 0.2
 # heuristic levels at 1 m against a car's tyres at 15 m/s
-ENGINE, EXHAUST, INTAKE, THROTTLE, TURBO, TYRE, HISS = 5.0, 0.6, 3.0, 0.05, 1.34, 1.0, 2.0
+ENGINE, EXHAUST, INTAKE, THROTTLE, TURBO, TYRE, HISS = 5.0, 0.3, 3.0, 0.05, 1.34, 1.0, 2.0
 HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses against a stock one's
 # exhaust flow noise, from recordings (a Hayabusa straight-piped and stock, a Suzuki Cappuccino on a dyno): above
 # ~1 kHz an exhaust is broadband noise, made by the flow at the tailpipe and in the silencer itself, so after the
@@ -57,6 +90,8 @@ HIGH_FLOW = 2.0  # heuristic: a high-flow exhaust's pulses against a stock one's
 # (1 m from the tailpipe, 45 degrees off axis), whose octaves above 800 Hz sit ~22 dB below everything under 200 Hz at
 # idle and 10-14 dB when revving
 FLOW_STOCK = 10 ** (-6 / 20)
+FLOW_SAT = 3.0  # gas speed (rpm/1000 x (0.5 + 0.5 load)) above which the flow noise grows like the tones; with
+# EXHAUST, fitted to the X1 revving on the spot (idle, a hold, blips to 6000 rpm: within ~3 dB in both octaves)
 FLOW_FULL = 6.0  # gas speed (rpm/1000 x (0.5 + 0.5 load)) at which the flow noise's corner is at its highest
 TURBINE = 1.3  # heuristic: a turbine takes energy from the exhaust pulses (level / TURBINE) and smears them (width x)
 COMPRESSOR = 0.4  # heuristic: the intake pulses left once they have passed back through a compressor
@@ -287,9 +322,11 @@ def engine(rng: np.random.Generator, car: dict) -> dict:
     bank = np.array(lay.get("bank", (0,) * fire.size))
     path_amp, path_lag = rng.uniform(0.6, 1.0, 2), rng.uniform(0.0, 30.0, 2)
     litres = car.get("litres") or rng.uniform(*k["litres"][layout])
-    return dict(layout=layout, turbo=turbo, high_flow=high_flow, fire=fire, litres=litres,
-                amp=rng.uniform(0.9, 1.1, fire.size) * path_amp[bank],
-                arrive=fire + np.array(lay.get("lag", (0,) * fire.size), float) + path_lag[bank],
+    rc = rng.spawn(1)[0]  # the cylinders' differences
+    cyl_lag, cyl_amp, jitter = rc.normal(0.0, CYL_LAG, fire.size), rc.lognormal(0.0, CYL_SPREAD, fire.size), rc.spawn(1)[0]
+    return dict(layout=layout, turbo=turbo, high_flow=high_flow, fire=fire, litres=litres, jitter=jitter,
+                amp=rng.uniform(0.9, 1.1, fire.size) * path_amp[bank] * cyl_amp,
+                arrive=fire + np.array(lay.get("lag", (0,) * fire.size), float) + path_lag[bank] + cyl_lag,
                 # the turbo matched to the engine (smaller ones spin faster), give or take
                 turbo_hz=TURBO_HZ * (k["kw_per_l"] * litres / TURBO_KW) ** -0.5 * rng.uniform(0.9, 1.1), split=k["split"],
                 # how hard each cylinder's combustion and each valve click (cylinders differ)
@@ -297,19 +334,21 @@ def engine(rng: np.random.Generator, car: dict) -> dict:
                 valves=VALVE_LEVEL * rng.lognormal(0.0, VALVE_SPREAD, (len(VALVE_DEG), fire.size)))
 
 
-def pulses(at: np.ndarray, amp: np.ndarray, width: float, envelope: bool = False) -> np.ndarray:
+def pulses(at: np.ndarray, amp: np.ndarray, width: float, envelope: bool = False, harmonics: int = HARMONICS,
+           rise: float = 0.0) -> np.ndarray:
     """One engine cycle of pressure pulses arriving at crank angles `at`: each a fast rise and an exponential fall
     (an alpha function peaking `width` degrees after it starts), at unit mean: the same gas each cycle however it is
     released, so a sharp release is a strong, bright pulse and a slow one little more than steady flow. A waveform
     has its mean removed and is band-limited to HARMONICS; an envelope is left as it is."""
     th = np.arange(TABLE) * 720.0 / TABLE
     u = ((th[None, :] - at[:, None]) % 720.0) / width
-    y = (amp[:, None] * u * np.exp(1 - u)).sum(0)
+    # rise: a steep front (rising over that fraction of the width, then the same fall) instead of the alpha's gradual one
+    y = (amp[:, None] * ((1 - np.exp(-u / rise)) * np.exp(-u) if rise else u * np.exp(1 - u))).sum(0)
     y /= y.mean()
     if envelope:
         return y
     Y = np.fft.rfft(y)
-    Y[0], Y[HARMONICS + 1:] = 0.0, 0.0
+    Y[0], Y[harmonics + 1:] = 0.0, 0.0
     return np.fft.irfft(Y, TABLE)
 
 
@@ -359,7 +398,9 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
     k = KINDS[car["kind"]]
     lv, r1k = k["level"] * fade, rpm / 1000
     exh = (HIGH_FLOW if e["high_flow"] else 1.0) / (TURBINE if e["turbo"] else 1.0)
-    tone = ENGINE * lv * r1k ** 1.5 * (0.25 + 0.75 * load) * exh
+    x1 = k["throttled"] and not e["high_flow"]  # a stock petrol exhaust: fitted to the X1
+    ta, tb = SHELF_TONE_LOAD if x1 else (0.25, 0.75)
+    tone = ENGINE * lv * r1k ** 1.5 * (ta + tb * load) * exh
     # petrol breathes through its throttle: weak intake pulses and a hiss past the nearly closed plate at light load
     breathe = 0.1 + 0.9 * load if k["throttled"] else 0.5 + 0.5 * load
     hiss = THROTTLE * lv * r1k * (1 - load) ** 2 if k["throttled"] else np.zeros_like(lv)
@@ -379,7 +420,9 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
             spool[j] = spool[j - 1] + d * (up if d > 0 else down)
     f_line = e["turbo_hz"] * (TURBO_IDLE + (1 - TURBO_IDLE) * spool)
     gas = r1k * (0.5 + 0.5 * load)  # the exhaust gas's speed, roughly
-    flow = EXHAUST * lv * gas ** 4 * (1.0 if e["high_flow"] else FLOW_STOCK)  # power as speed^8 (Lighthill)
+    # power as speed^8 (Lighthill) at first, then growing only as fast as the tones (speed^3 in power): against the
+    # tones it rises by ~11-21 dB from idle, then levels off, alike pulling hard at 3000-4500 rpm and blipping to 6000
+    flow = EXHAUST * lv * gas ** 4 / (1 + (gas / FLOW_SAT) ** 2.5) * (1.0 if e["high_flow"] else FLOW_STOCK)
     gains = (tone * (1 - load), tone * load, flow, k["mech"] * lv * r1k ** 2 * (0.5 + 0.5 * load),
              TYRE * (v / 15.0) ** 2 * (1.5 if car["kind"] == "heavy" else 1.0) * fade,
              INTAKE * lv * r1k ** 1.5 * breathe * (COMPRESSOR if e["turbo"] else 1.0), hiss,
@@ -391,7 +434,8 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
     cycles = np.cumsum(np.interp(te, t, rpm) / (120.0 * fs))  # engine cycles (one every two revolutions)
     pos = ((cycles % 1.0) * TABLE).astype(np.intp)
     w_soft, w_hard = np.array(k["pulse_deg"]) * (TURBINE if e["turbo"] else 1.0)
-    soft, hard = pulses(e["arrive"], e["amp"], w_soft), pulses(e["arrive"], e["amp"], w_hard)
+    hm, rise = (128, PULSE_RISE) if x1 else (HARMONICS, 0.0)
+    soft, hard = (pulses(e["arrive"], e["amp"], w, harmonics=hm, rise=rise) for w in (w_soft, w_hard))
     gate = pulses(e["arrive"], e["amp"], w_hard, envelope=True)[pos]  # the flow noise comes in the pulses
     clicks = np.concatenate([e["fire"]] + [e["fire"] + d for d in VALVE_DEG])
     knock = pulses(clicks, np.concatenate([e["knock"], *e["valves"]]), CLICK_DEG, envelope=True)[pos]
@@ -404,13 +448,30 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
     corner = min(1000.0 + 60.0 * v[fade > 0].max(), 0.45 * fs)  # faster: brighter
     tyre = signal.sosfilt(signal.butter(2, [300.0, corner], "bandpass", fs=fs, output="sos"), seg(banks["tyre"]))
     x = g_soft * soft[pos] + g_hard * hard[pos]
+    if e.get("jitter") is not None:  # no two firings alike (smoothly from one to the next)
+        jit = e["jitter"].lognormal(-FIRING_SPREAD ** 2 / 2, FIRING_SPREAD, event[-1] + 2)
+        x *= np.interp(cycles * e["fire"].size, np.arange(jit.size), jit)
     # the silencer; a high-flow one is freer: gentler, and higher
-    order, f_m = (2, 2.5 * k["muffler"]) if e["high_flow"] else (4, k["muffler"])
-    x = signal.sosfilt(signal.butter(order, min(f_m, 0.45 * fs), "lowpass", fs=fs, output="sos"), x)
+    if x1:
+        x = signal.sosfilt(signal.butter(3, TONE_CEILING, "lowpass", fs=fs, output="sos"), x)  # the harmonics' ceiling
+        o = int(banks["floor_rng"].integers(0, banks["floor"].size - m))  # white-ish noise in the source
+        x += FLOOR * (g_soft + g_hard) * banks["floor"][o:o + m]
+        x = signal.oaconvolve(x, shelf(fs), mode="same")
+        res = signal.sosfiltfilt(signal.butter(2, RES_CUT, "lowpass", fs=fs, output="sos"), x)
+        x += res * RES_BOOST * np.minimum(np.interp(te, t, load), 0.5)  # the resonances, driven harder as the throttle opens
+        x *= X1_GAIN
+    else:
+        order, f_m = (2, 2.5 * k["muffler"]) if e["high_flow"] else (4, k["muffler"])
+        x = signal.sosfilt(signal.butter(order, min(f_m, 0.45 * fs), "lowpass", fs=fs, output="sos"), x)
     # then the flow noise made at the tailpipe, pulsing with the exhaust, brighter as the gas speeds up
     bright = np.interp(te, t, np.clip(gas / FLOW_FULL, 0.0, 1.0))
     x += g_exh * (np.sqrt(1 - bright) * seg(banks["flow"]) + np.sqrt(bright) * seg(banks["flow_bright"])) * (0.5 + 0.5 * gate)
-    x += signal.lfilter(*resonant_lowpass(k["airbox"], 2.0, fs), g_in * inlet[pos])  # a plastic airbox: little damping
+    rear, x = x, np.zeros_like(x)  # the exhaust so far, heard from the back; the rest from the engine bay
+    if x1:  # a petrol airbox as on the X1: everything below ~430 Hz grows with the throttle
+        y_in = signal.lfilter(*resonant_lowpass(430.0, 2.0, fs), g_in * inlet[pos])
+        x += signal.sosfilt(signal.butter(2, 450.0, "lowpass", fs=fs, output="sos"), y_in)
+    else:
+        x += signal.lfilter(*resonant_lowpass(k["airbox"], 2.0, fs), g_in * inlet[pos])  # a plastic airbox: little damping
     x += g_mech * seg(banks["mech"]) * (1 - k["clatter"] + k["clatter"] * knock) + g_tyre * tyre / (np.std(tyre) + 1e-12)
     x += g_hiss * seg(banks["hiss"])
     if e["turbo"]:
@@ -423,7 +484,21 @@ def sound(rng: np.random.Generator, car: dict, e: dict, te: np.ndarray, t: np.nd
                 n_h = int(rng.uniform(0.6, 1.5) * fs)
                 if 0 <= start < m - n_h:
                     x[start:start + n_h] += float("air-brakes" in parts) * HISS * np.interp(te[start], t, lv) * hiss[start:start + n_h] * np.exp(-np.arange(n_h) / (0.4 * fs))
-    return x
+    return rear, x
+
+
+_SHELF = {}
+
+
+def shelf(fs: int) -> np.ndarray:
+    """The stepped stock silencer (SHELF_DB with SHELF_PEAKS) as a linear-phase FIR, fine enough for the narrow peaks."""
+    if fs not in _SHELF:
+        f = np.linspace(0.0, fs / 2, 4097)
+        db = np.interp(f, *(np.array(v, float) for v in zip(*SHELF_DB)))
+        for fc, gain, width in SHELF_PEAKS:
+            db += gain * np.exp(-0.5 * (np.log(np.maximum(f, 1.0) / fc) / width) ** 2)
+        _SHELF[fs] = signal.firwin2(int(fs // 8) | 1, f, 10 ** (db / 20), fs=fs)  # ~8 Hz resolution
+    return _SHELF[fs]
 
 
 def render(rng: np.random.Generator, scene: Scene, facade: spatial.Facade, rx: spatial.Receiver,
@@ -447,6 +522,10 @@ def render(rng: np.random.Generator, scene: Scene, facade: spatial.Facade, rx: s
     banks["flow"], banks["flow_bright"] = (bp(150.0, min(c, 0.45 * fs), pink) for c in (2000.0, 6000.0))
     for key in ("mech", "hiss", "flow", "flow_bright"):
         banks[key] /= np.std(banks[key])
+    # the stock petrol exhaust's source noise, from a spawned generator (the layer's own stream does not move)
+    rf = rng.spawn(1)[0]
+    fl = bp(300.0, min(8000.0, 0.45 * fs), coloured_noise(rf, nb, 1.5, fs))
+    banks["floor"], banks["floor_rng"] = fl / np.std(fl), rf
     # turbo: overlapping half-octave bands from 700 Hz, which each turbo weights around its centre
     centres = [c for c in 700.0 * 2 ** (np.arange(12) / 2) if c * 2 ** 0.35 < 0.45 * fs]
     banks["turbo"] = [(c, (x := bp(c / 2 ** 0.35, c * 2 ** 0.35, rng.standard_normal(nb))) / np.std(x)) for c in centres]
@@ -456,20 +535,26 @@ def render(rng: np.random.Generator, scene: Scene, facade: spatial.Facade, rx: s
         if not fade[w].any():
             continue
         e = engine(rng, car)
-        rpm, load = drive(rng, car, car["v"][w], car["acc"][w], e)
+        if "rpm" in car:  # given (e.g. revving on the spot), not through the gearbox
+            rpm, load = car["rpm"][w], car["load"][w]
+        else:
+            rpm, load = drive(rng, car, car["v"][w], car["acc"][w], e)
         live = np.flatnonzero(fade[w])  # only while it is within earshot
         a = max(int((t[w][live[0]] - DT - t0) * fs), 0)
         b = min(int(np.ceil((t[w][live[-1]] + DT - t0) * fs)), te.size)
         x = sound(rng, car, e, te[a:b], t[w], rpm, load, car["v"][w], fade[w], banks, fs, parts)
         span = (max(int(te[a] * fs), 0), min(int(np.ceil((te[b - 1] + (HEARD_M + 10.0) / spatial.C) * fs)) + 1, n))
 
-        def path(tt, tx=t, xx=car["x"], y=car["y"]):
-            return np.stack([np.interp(tt, tx, xx), np.full_like(tt, y), np.full_like(tt, 0.5)], axis=1)
+        heading = car.get("heading") or (1.0 if car["x"][-1] >= car["x"][0] else -1.0)
+        length = car.get("length", KINDS[car["kind"]]["length"])
+        for xs, off in zip(x, (-0.5 * length, 0.3 * length)):  # the tailpipe, the engine bay
+            def path(tt, tx=t, xx=car["x"] + heading * off, y=car["y"]):
+                return np.stack([np.interp(tt, tx, xx), np.full_like(tt, y), np.full_like(tt, 0.5)], axis=1)
 
-        if outside:
-            out += rx.place_moving(x, path, t0=te[a], span=span)
-        else:
-            out += spatial.place_moving(x, path, scene.mic, fs, t0=te[a], n=n, span=span)
+            if outside:
+                out += rx.place_moving(xs, path, t0=te[a], span=span)
+            else:
+                out += spatial.place_moving(xs, path, scene.mic, fs, t0=te[a], n=n, span=span)
     bed = coloured_noise(rng, n, 6.0, fs)
     env = np.interp(np.arange(n), np.linspace(0, n, 8), 1 + 0.3 * rng.standard_normal(8))
     bed = bed * np.clip(env, 0.3, None) * np.std(out + 1e-9) * 10 ** (cfg.bed_db / 20)

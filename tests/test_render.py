@@ -165,6 +165,16 @@ def test_vehicle_parts_add_up():
     assert sum(np.mean(x ** 2) > 0 for x in parts) >= 5
 
 
+def test_stock_silencer():
+    """the stock petrol silencer as measured on a BMW X1: its strongest resonance (~307 Hz) well clear of the trough
+    below it, the fall above ~390 Hz, and the higher resonances (e.g. ~1.7 kHz) standing out"""
+    from random_cafe.layers import traffic
+    w, H = signal.freqz(traffic.shelf(FS), worN=2 ** 15, fs=FS)
+    db = lambda f: 20 * np.log10(np.abs(H[np.argmin(np.abs(w - f))]))  # noqa: E731
+    assert db(307) - db(260) > 10 and db(377) - db(440) > 10
+    assert db(1700) - (db(1640) + db(1760)) / 2 > 1.5
+
+
 def test_engine_layouts():
     """A flat-plane V8's banks each fire evenly (every 180 degrees: only every fourth cycle harmonic); a cross-plane
     V8's do not, which is its burble. The same gas released sharply makes a stronger, brighter firing order."""
