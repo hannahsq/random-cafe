@@ -34,6 +34,8 @@ Seeded background scenes rendered as separate stems at one microphone: babble fr
 
 - Rain was rebuilt on umbrella-rain's ground model (the old one sounded over-processed). Compare by ear with umbrella-rain's best demos once Hannah has found their command lines. The window pane's radiation gain (`Rain.pane_db`) and the wind's buffeting and rush constants are heuristics, not yet checked by ear.
 
+- Exhaust (on hold for stock and straight-piped references): a Suzuki Cappuccino dyno pull (`data/cappuccino_2.flac`, aftermarket ~75 mm exhaust, mic ~2 m behind the outlet, on axis) shows firing harmonics relative to the firing order at about -15 to -18 dB at 400-800 Hz, -17 to -21 at 0.8-1.6 kHz, then ~12 dB/octave. That is a shelf, not our steep fourth-order low-pass: even the high-flow silencer is ~20-30 dB too dark above 800 Hz. The second firing harmonic matches the first; half-orders rise to near the firing ones above cycle order ~10 at high rpm (cylinders' pulses arriving a few degrees apart; ours vary only in amplitude); and the block's noise should be partly locked to engine orders (the truck idle shows the same). Plan once references arrive: a silencer shelf (corner, floor, gentle roll-off) fitted per exhaust type, pulse arrival offsets with cycle-to-cycle jitter, order-locked block noise; allow for on-axis beaming above ~1.5 kHz.
+
 ## Conventions
 
 - New corpora must have licences that allow any use with attribution (CC0, CC BY, Apache). Never ship audio. Never try to identify speakers.
