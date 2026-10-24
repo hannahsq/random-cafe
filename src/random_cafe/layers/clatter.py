@@ -11,7 +11,7 @@ KINDS = {  # (mode frequency range Hz, decay range s, number of modes, weight of
     # decays, many inharmonic partials, and a broadband impact that dominates the attack (heuristic values)
     "plate": ((600.0, 4000.0), (0.004, 0.025), (5, 10), 1.0, 0.35),
     "cup": ((1000.0, 5000.0), (0.004, 0.03), (4, 9), 0.8, 0.3),
-    "cutlery": ((2000.0, 7500.0), (0.002, 0.015), (6, 12), 1.2, 0.3),
+    "cutlery": ((2000.0, 7500.0), (0.001, 0.007), (6, 12), 1.5, 0.3),  # broad: Q ~15-170
     "glass": ((1800.0, 6500.0), (0.02, 0.08), (3, 6), 0.4, 0.05),  # the one kind that rings a little
 }
 
