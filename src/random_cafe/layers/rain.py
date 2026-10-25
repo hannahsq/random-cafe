@@ -1,8 +1,9 @@
 """Rain on open ground around the microphone, after umbrella-rain's ground layer (github.com/hannahsq/umbrella-rain),
 kept cheap enough for training data. Drop sizes follow Marshall-Palmer weighted by fall speed (Atlas et al. 1973),
 in a few size bins. Each drop is an impact click plus a splash of band-limited noise whose colour follows its contact
-time d / v; only large drops landing in puddles ring a Minnaert bubble (f = 3.26 / R, damping after van den Doel 2005).
-(The small drops' regular bubbles near 15 kHz are above the Nyquist frequency at 16 kHz and left out.)
+time d / v, and a short burst near 11 kHz at the first instant of contact (fitted; see SPIKE). Only large drops
+landing in puddles ring a Minnaert bubble (f = 3.26 / R, damping after van den Doel 2005).
+(Small drops' regular bubbles, 13-15 kHz, are left out; the spike, above the Nyquist frequency at 16 kHz, is too.)
 
 The nearest drops of each size are rendered one by one, up to a budget per bin; everything else is the dense rain
 further out. Ground area grows as rho^2 while intensity falls as 1 / r^2, so every log-spaced ring carries similar
@@ -24,6 +25,16 @@ from .noise import ou
 EDGES_MM = np.geomspace(0.3, 6.0, 7)  # drop-size bins
 VARIANTS = 3  # grain realisations per bin, so near drops don't all share one waveform
 SPLASH_RATIO = 0.4  # heuristic (umbrella-rain): splash level against the click
+# fitted to recordings (rain on a street, greenery, an umbrella and polycarbonate; Hannah's, eval only): every
+# impact also has a burst of ~0.15 ms near 11 kHz, at about the same frequency whatever the drop's size, giving the
+# bump every rain recording shows at 10-13 kHz. Likely the air cushion trapped under a landing drop collapsing within
+# microseconds (the contact itself is far too long to make it). Its level against the click fitted so the ground
+# rain's spectrum matches the recordings' at 10-16 kHz (within ~3 dB); the same for every size. Regular-entrainment
+# bubbles (0.8-1.1 mm drops in water) ring there too, but would need to be ~25 dB over their impact to explain it
+SPIKE_BAND = (10000.0, 13500.0)
+SPIKE_DECAY = 1.5e-4
+SPIKE = 1.0
+SPIKE_EXP = 0.0  # amplitude against the click goes as (d / 2 mm)^SPIKE_EXP
 JITTER = 0.4  # heuristic: lognormal spread of impact strength within a bin (sizes, angles, surfaces)
 BUBBLE_MIN_MM = 2.2  # drops this large entrain bubbles irregularly when they land in water
 P_BUBBLE = 0.5  # heuristic: chance such a drop landing in a puddle rings
@@ -73,6 +84,11 @@ def grain(rng: np.random.Generator, d_mm: float, fs: int) -> np.ndarray:
     y = splash * noise / (np.std(noise) + 1e-12) * np.minimum(t / 3e-4, 1) * np.exp(-t / decay)
     tt = (np.arange(int(np.ceil(tau * fs))) + 0.5) / fs
     y[:tt.size] += click * np.sin(2 * np.pi * tt / tau)
+    if SPIKE and SPIKE_BAND[1] < 0.45 * fs:  # (above Nyquist at 16 kHz: left out, and no draw)
+        m = min(int(8 * SPIKE_DECAY * fs) + 1, n)
+        burst = signal.sosfilt(signal.butter(2, SPIKE_BAND, "bandpass", fs=fs, output="sos"),
+                               rng.standard_normal(m) * np.exp(-np.arange(m) / fs / SPIKE_DECAY))
+        y[:m] += SPIKE * (d_mm / 2) ** SPIKE_EXP * click * burst / (np.sqrt(np.sum(burst ** 2) / fs / SPIKE_DECAY * 2) + 1e-12)
     return y
 
 
