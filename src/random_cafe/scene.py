@@ -104,6 +104,12 @@ class Wind:
     speed_ms: float = 4.0  # mean wind speed at the microphone (a moderate breeze)
     gust_depth: float = 0.3  # turbulence intensity: speed fluctuation as a fraction of the mean
     gust_time_s: float = 5.0  # correlation time of the gusts
+    # the microphone's body: eddies about its size, and the pressure averaged over it. Defaults are a phone's, fitted
+    # to a recording (held while walking into a ~15 km/h wind, so ~4-5 m/s across it): buffeting flat to ~115 Hz,
+    # ~f^-4.3 above, falling off below ~25 Hz (the phone's high-pass). A bare measurement capsule would be ~0.01 m
+    # with no high-pass (0)
+    eddy_m: float = 0.04
+    highpass_hz: float = 25.0
 
 
 @dataclass
