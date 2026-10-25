@@ -29,6 +29,10 @@ def main():
     ap.add_argument("--traffic", type=float, metavar="VEHICLES_PER_MIN", help="0 = none")
     ap.add_argument("--rain", type=float, metavar="MM_H", help="0 = none")
     ap.add_argument("--wind", type=float, metavar="M_S", help="wind speed (it also drives rain onto windows); 0 = none")
+    ap.add_argument("--overhead", choices=["none", "cafe-umbrella", "pedestrian-umbrella", "folding-umbrella",
+                                           "polycarbonate"], help="what the rain falls on over the microphone")
+    ap.add_argument("--overhead-height", type=float, metavar="M", help="its height above the microphone")
+    ap.add_argument("--ceiling", action="store_true", help="indoors: a ceiling under the roof")
     ap.add_argument("--talkers", help="TSV of speaker, path")
     ap.add_argument("--bed", nargs="*", default=[])
     ap.add_argument("--sofa", help="HRIRs (.sofa) for a binaural render (needs h5py)")
@@ -54,6 +58,12 @@ def main():
         s.rain.enabled, s.rain.rain_mm_h = a.rain > 0, a.rain
     if a.wind is not None:
         s.wind.enabled, s.wind.speed_ms = a.wind > 0, a.wind
+    if a.overhead:
+        s.rain.overhead = "" if a.overhead == "none" else a.overhead
+    if a.overhead_height:
+        s.rain.overhead_height_m = a.overhead_height
+    if a.ceiling:
+        s.rain.ceiling = True
     s.bed.paths = tuple(a.bed)
     if a.yaw is not None:
         s.listener_yaw_deg = a.yaw

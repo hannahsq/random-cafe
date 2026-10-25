@@ -80,7 +80,8 @@ class Traffic:
 @dataclass
 class Rain:
     """Drop impacts (click and splash) on the ground outdoors, Minnaert bubbles from large drops landing in puddles;
-    indoors, drops on a window pane plus the transmitted outdoor rain."""
+    indoors, drops on a window pane ringing it, plus the transmitted outdoor rain; and drops on whatever is overhead
+    (an umbrella, a roof)."""
     enabled: bool = False
     level_db: float = -6.0
     rain_mm_h: float = 5.0
@@ -89,10 +90,21 @@ class Rain:
     grains_hz: float = 500.0  # per drop-size bin: the nearest drops one by one, the rest as a dense continuum
     gust_depth: float = 0.25  # slow rain-rate fluctuation, fraction of the mean
     gust_time_s: float = 4.0  # its correlation time
-    # heuristic: a drop on glass shakes the whole pane, which radiates into the room far better than a splash on the
-    # ground radiates into the air; chosen so a windward window is heard well but rarely
-    # drowns the room (to be checked by ear)
-    pane_db: float = 20.0
+    # heuristic: the ringing pane's level (surface.WINDOW sets its colour and ring, not its loudness against the
+    # ground); set so a windward window is as loud as the earlier model's, which was balanced by ear against the room
+    pane_db: float = 30.0
+    # what is directly over the microphone (surface.OVERHEAD: "cafe-umbrella", "pedestrian-umbrella",
+    # "folding-umbrella", "polycarbonate"; "" for open sky): drops on it heard from below, far field (near field
+    # closer than 0.5 m), sheltering the ground beneath it outdoors; indoors it is the roof
+    overhead: str = ""
+    overhead_height_m: float = 1.0  # above the microphone
+    overhead_extent_m: float = 4.0  # a roof's extent heard (umbrellas cover their own radius)
+    # indoors, a ceiling between the roof and the room: a flat loss, and above the knee a roll-off (heuristic defaults
+    # for a light suspended ceiling)
+    ceiling: bool = False
+    ceiling_db: float = 10.0
+    ceiling_knee_hz: float = 300.0
+    ceiling_slope_db_oct: float = 6.0
 
 
 @dataclass

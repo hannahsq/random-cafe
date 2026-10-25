@@ -329,3 +329,16 @@ def test_floor_positions_uniform_by_area():
     r = np.array([np.linalg.norm(spatial.floor_position(rng, (1.0, 10.0), 0.0)[:2]) for _ in range(20000)])
     # uniform over area: the share within radius R is (R^2 - 1) / (100 - 1)
     assert np.mean(r < 5.0) == pytest.approx(24 / 99, abs=0.02)
+
+
+def test_rain_overhead():
+    """an umbrella overhead is heard over the ground rain; a roof adds to the rain indoors; a ceiling takes its flat
+    loss and more above its knee"""
+    from random_cafe.layers import rain
+    kw = dict(rain__enabled=True, babble__enabled=False, clatter__enabled=False, room__indoor=False)
+    assert mean_db("rain", rain__overhead="cafe-umbrella", **kw) > mean_db("rain", **kw) + 2
+    kw = dict(rain__enabled=True, babble__enabled=False, clatter__enabled=False)
+    assert mean_db("rain", rain__overhead="polycarbonate", rain__overhead_height_m=2.5, **kw) > mean_db("rain", **kw) + 1
+    x = np.random.default_rng(0).standard_normal(4 * FS)
+    y = rain.ceiling(x, FS, 10.0, 300.0, 6.0)
+    assert rms_db(y) < rms_db(x) - 10 and hf_share(y) < 0.5 * hf_share(x)

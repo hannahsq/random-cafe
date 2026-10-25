@@ -10,15 +10,19 @@ further out. Ground area grows as rho^2 while intensity falls as 1 / r^2, so eve
 power, and so many drops overlap there that their sum is Gaussian: it is rendered as noise through the same grains,
 at the power the rings give in closed form. The rain rate drifts slowly (a gust envelope).
 
-Indoors: drops on a window pane, plus the outdoor rain through the facade (windows, and the front door when it is
-open). Wind blows rain sideways at its own speed U while drops fall at v_t, so a vertical pane facing the wind takes
-U / v_t of the flux onto the ground (more of the small, slow drops); the facade's angle to the wind is drawn per
-scene. The pane's dense drops are a continuum too, so a windward window is a rain bed of its own."""
+Indoors: drops on a window pane, ringing it (surface.WINDOW), plus the outdoor rain through the facade (windows, and
+the front door when it is open). Wind blows rain sideways at its own speed U while drops fall at v_t, so a vertical
+pane facing the wind takes U / v_t of the flux onto the ground (more of the small, slow drops); the facade's angle to
+the wind is drawn per scene. The pane's dense drops are a continuum too, so a windward window is a rain bed of its own.
+
+Overhead (Rain.overhead): drops on an umbrella or a roof (surface.py), each size's strikes rendered a few times and
+reused, the nearest one by one and the rest as a continuum; outdoors it shelters the ground beneath it, indoors it is
+the roof, heard in the room, optionally through a ceiling."""
 import numpy as np
 from scipy import fft as sp_fft
 from scipy import signal
 
-from .. import spatial
+from .. import spatial, surface
 from ..scene import Scene
 from .noise import ou
 
@@ -42,6 +46,10 @@ BUBBLE_LEVEL = 2.0  # heuristic (umbrella-rain): bubble level against the splash
 SECTORS = 16  # binaural only: azimuth sectors for the near drops
 PANE_M2 = 2.25  # a 1.5 x 1.5 m window
 PANE_SHARE_MIN = 0.005  # heuristic: share of the rain eddies bring onto a sheltered (leeward) pane
+# heuristic: drops overhead against drops on the ground. The surfaces' fits (surface.py) set each one's colour and
+# ring, not its loudness against the ground; this puts a pedestrian umbrella's canopy 0.5 m up ~7 dB over the
+# ground rain around it, umbrella-rain's by-ear balance (canopy ticks 0 dB, body -3, ground bed -6)
+OVERHEAD_DB = 11.5
 
 
 def terminal_velocity(d_mm):
@@ -118,9 +126,10 @@ def bubble(rng: np.random.Generator, fs: int) -> tuple[np.ndarray, float]:
 
 
 def field(rng: np.random.Generator, scene: Scene, env: np.ndarray, rx: spatial.Receiver | None = None,
-          pane_m: float | None = None, windward: float = 0.0) -> np.ndarray:
+          pane_m: float | None = None, windward: float = 0.0, shelter_m: float = 0.0) -> np.ndarray:
     """Rain on the ground around the microphone, or with pane_m on a window that far away, facing the wind by
-    `windward` (the cosine of its angle to the wind, 0 for a sheltered pane). The near drops are added
+    `windward` (the cosine of its angle to the wind, 0 for a sheltered pane). Ground within shelter_m of the
+    microphone (under an umbrella or a roof) stays dry. The near drops are added
     grain by grain (vectorised); the rest, whose sum is Gaussian, is one white noise coloured by every bin's grain
     spectrum at the power the rings give, and modulated by the (slow) gust envelope.
 
@@ -148,7 +157,13 @@ def field(rng: np.random.Generator, scene: Scene, env: np.ndarray, rx: spatial.R
         k = rng.poisson(rate * peak * scene.duration_s)
         i = rng.integers(0, n, k)
         keep = rng.uniform(size=k) < env[i] / peak  # thinned by the gusts
-        r = np.full(k, pane_m) if pane_m is not None else np.hypot(rho_b * np.sqrt(rng.uniform(size=k)), h)
+        if pane_m is not None:
+            r = np.full(k, pane_m)
+        else:
+            rho = rho_b * np.sqrt(rng.uniform(size=k))
+            r = np.hypot(rho, h)
+            if shelter_m:
+                keep &= rho >= shelter_m
         amp = rng.lognormal(0, JITTER, k) / r
         delay = np.round(r / spatial.C * fs).astype(int)
         v = rng.integers(0, VARIANTS, k)
@@ -162,7 +177,8 @@ def field(rng: np.random.Generator, scene: Scene, env: np.ndarray, rx: spatial.R
             idx = np.minimum(idx, (sec[sel] * n + n)[:, None])  # a grain running past the end goes to a spill sample
             buf += np.bincount(idx.ravel(), (amp[sel, None] * kern).ravel(), n_sec * n + 1)[:n_sec * n]
         if pane_m is None and rho_b < rho_max:  # the dense rain beyond: sum of a^2 per second over the rings
-            power = f_b * np.exp(2 * JITTER ** 2) * np.pi * np.log((rho_max ** 2 + h * h) / (rho_b ** 2 + h * h))
+            inner = max(rho_b, min(shelter_m, rho_max))
+            power = f_b * np.exp(2 * JITTER ** 2) * np.pi * np.log((rho_max ** 2 + h * h) / (inner ** 2 + h * h))
             dense += power / fs * np.abs(sp_fft.rfft(kernels[0], nfft)) ** 2
         elif pane_m is not None and on_pane > rate:
             dense += (on_pane - rate) * np.exp(2 * JITTER ** 2) / pane_m ** 2 / fs * np.abs(sp_fft.rfft(kernels[0], nfft)) ** 2
@@ -189,13 +205,86 @@ def field(rng: np.random.Generator, scene: Scene, env: np.ndarray, rx: spatial.R
     return out
 
 
+def struck(rng: np.random.Generator, scene: Scene, env: np.ndarray, s: surface.Surface, rates: np.ndarray,
+           place, inv_r2: float, near: bool = False) -> np.ndarray:
+    """Drops striking a surface, heard at the microphone: per size bin, VARIANTS strikes (surface.strike), the
+    budget's worth of drops one by one at distances `place(rng, k)` draws, the rest as noise of the same colour at the
+    power their mean 1 / r^2 (inv_r2) gives. rates: drops per second on it, per bin. Long rings (a pane) make this an
+    FFT convolution rather than the ground's scatter."""
+    cfg, fs, n = scene.rain, scene.fs, env.size
+    _, sizes = drop_flux(cfg.rain_mm_h)
+    peak = env.max()
+    out = np.zeros(n)
+    nfft = sp_fft.next_fast_len(2 * n, real=True)
+    dense = np.zeros(nfft // 2 + 1)
+    for rate, d_b in zip(rates, sizes):
+        if rate <= 0:
+            continue
+        kernels = [surface.strike(rng, s, d_b, fs, near=near)[:n] for _ in range(VARIANTS)]
+        explicit = min(rate, cfg.grains_hz)
+        k = rng.poisson(explicit * peak * scene.duration_s)
+        i = rng.integers(0, n, k)
+        keep = rng.uniform(size=k) < env[i] / peak
+        r = place(rng, k)
+        amp = rng.lognormal(0, JITTER, k) / r
+        pos = i + np.round(r / spatial.C * fs).astype(int)
+        v = rng.integers(0, VARIANTS, k)
+        for j, kern in enumerate(kernels):
+            sel = keep & (v == j) & (pos < n)
+            if sel.any():
+                out += signal.oaconvolve(np.bincount(pos[sel], amp[sel], n), kern)[:n]
+        if rate > explicit:
+            spec = np.mean([np.abs(sp_fft.rfft(kk, nfft)) ** 2 for kk in kernels], 0)
+            dense += (rate - explicit) * np.exp(2 * JITTER ** 2) * inv_r2 / fs * spec
+    if dense.any():  # stationary noise, so the circular convolution is harmless
+        out += sp_fft.irfft(sp_fft.rfft(rng.standard_normal(nfft)) * np.sqrt(dense), nfft)[:n] * np.sqrt(env)
+    return out
+
+
+def ceiling(x: np.ndarray, fs: int, loss_db: float, knee_hz: float, slope_db_oct: float) -> np.ndarray:
+    """Sound through a ceiling: loss_db at every frequency, and slope_db_oct more per octave above knee_hz
+    (zero-phase, in one FFT)."""
+    nfft = sp_fft.next_fast_len(2 * x.size, real=True)
+    f = sp_fft.rfftfreq(nfft, 1 / fs)
+    g = 10 ** (-(loss_db + slope_db_oct * np.log2(np.maximum(f, 1e-9) / knee_hz).clip(0)) / 20)
+    return sp_fft.irfft(sp_fft.rfft(x, nfft) * g, nfft)[:x.size]
+
+
+def overhead(rng: np.random.Generator, scene: Scene, env: np.ndarray) -> tuple[np.ndarray, float]:
+    """Drops on what is over the microphone (Rain.overhead), mono at the microphone; and the radius it covers."""
+    cfg = scene.rain
+    s, radius = surface.OVERHEAD[cfg.overhead]
+    radius = radius or cfg.overhead_extent_m
+    h = cfg.overhead_height_m
+    flux, _ = drop_flux(cfg.rain_mm_h)
+    place = lambda g, k: np.hypot(h, radius * np.sqrt(g.uniform(size=k)))  # noqa: E731
+    inv_r2 = np.log(1 + radius ** 2 / h ** 2) / radius ** 2  # mean 1 / r^2 over the disc it covers
+    x = struck(rng, scene, env, s, flux * np.pi * radius ** 2, place, inv_r2, near=h < 0.5)
+    return x * 10 ** (OVERHEAD_DB / 20), radius
+
+
 def render(rng: np.random.Generator, scene: Scene, room: spatial.SharedRoom, facade: spatial.Facade,
            rx: spatial.Receiver) -> np.ndarray:
+    cfg = scene.rain
     env = envelope(rng, scene)
+    above = rx.mic + np.array([0.0, 0.0, cfg.overhead_height_m])
+    rng_over = rng.spawn(1)[0]  # overhead: its own stream, so the rest is the same with or without it
     if not scene.room.indoor:
-        return field(rng, scene, env, rx)
+        if not cfg.overhead:
+            return field(rng, scene, env, rx)
+        roof, radius = overhead(rng_over, scene, env)
+        return field(rng, scene, env, rx, shelter_m=radius) + rx.toward(roof, above)
     outdoor = facade(field(rng, scene, env), rng)
     r_pane, windward = rng.uniform(2.0, 4.0), max(np.cos(rng.uniform(0, 2 * np.pi)), 0.0)
-    pane = field(rng, scene, env, pane_m=r_pane, windward=windward)  # glass: a hard, bright tick
-    pane = signal.sosfilt(signal.butter(2, 2000, "highpass", fs=scene.fs, output="sos"), pane) * 10 ** (scene.rain.pane_db / 20)
-    return outdoor + room.apply(rx.toward(pane, facade.opening), r_pane, rng)  # the pane is in the facade
+    # the pane rings at its own modes; the wind decides how much of the rain reaches it
+    flux, sizes = drop_flux(cfg.rain_mm_h)
+    on_pane = flux * PANE_M2 * np.maximum(scene.wind.speed_ms / terminal_velocity(sizes) * windward, PANE_SHARE_MIN)
+    pane = struck(rng, scene, env, surface.WINDOW, on_pane, lambda g, k: np.full(k, r_pane), 1 / r_pane ** 2)
+    pane *= 10 ** (cfg.pane_db / 20)
+    out = outdoor + room.apply(rx.toward(pane, facade.opening), r_pane, rng)  # the pane is in the facade
+    if cfg.overhead:
+        roof, _ = overhead(rng_over, scene, env)
+        if cfg.ceiling:
+            roof = ceiling(roof, scene.fs, cfg.ceiling_db, cfg.ceiling_knee_hz, cfg.ceiling_slope_db_oct)
+        out = out + room.apply(rx.toward(roof, above), cfg.overhead_height_m, rng_over)
+    return out

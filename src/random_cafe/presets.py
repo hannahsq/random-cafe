@@ -102,10 +102,11 @@ def street_cafe(s):
 
 
 def street_cafe_rain(s):
-    s = street_cafe(s)  # the regulars stay out in it
+    s = street_cafe(s)  # the regulars stay out in it, under the cafe's umbrellas
     _only(s, "babble", "clatter", "traffic", "rain", "wind")
     s.rain.rain_mm_h = 8.0
-    s.rain.level_db -= 6.0  # under an awning: heard around the tables, not on top of them
+    s.rain.overhead, s.rain.overhead_height_m = "cafe-umbrella", 1.0
+    s.rain.level_db -= 12.8  # under the umbrella, kept where the blend had it (rain ~3 dB(A) over the voices)
     s.wind.speed_ms = 5.0
     return s
 
@@ -148,8 +149,9 @@ def preset(name: str, **scene_kw) -> Scene:
 
 
 def random_scene(seed: int, p_layer: float = 0.5, **scene_kw) -> Scene:
-    """Every layer on with probability p_layer (at least one on), indoor or outdoor, kitchen open or closed, and each
-    intensity drawn log-uniformly across its realistic range, all from `seed`."""
+    """Every layer on with probability p_layer (at least one on), indoor or outdoor, kitchen open or closed, each
+    intensity drawn log-uniformly across its realistic range, and sometimes an umbrella or a roof overhead, all from
+    `seed`."""
     rng = np.random.default_rng([seed, 0xCAFE])
     s = Scene(seed=seed, **scene_kw)
     names = list(LAYERS)
@@ -167,4 +169,13 @@ def random_scene(seed: int, p_layer: float = 0.5, **scene_kw) -> Scene:
     s.traffic.lights = bool(rng.uniform() < 0.3)
     for n in names:
         getattr(s, n).level_db += rng.uniform(-6.0, 6.0)
+    # what is overhead (drawn last, so the draws above stay as they were): outdoors a cafe umbrella 40% of the time and
+    # a pedestrian's umbrella 10%; indoors a polycarbonate roof 20% of the time, under a ceiling half of those
+    u, h, c = rng.uniform(size=3)
+    if s.room.indoor and u < 0.2:
+        s.rain.overhead, s.rain.overhead_height_m, s.rain.ceiling = "polycarbonate", 2.0 + 2.0 * h, bool(c < 0.5)
+    elif not s.room.indoor and u < 0.4:
+        s.rain.overhead, s.rain.overhead_height_m = "cafe-umbrella", 0.8 + 0.7 * h
+    elif not s.room.indoor and u < 0.5:
+        s.rain.overhead, s.rain.overhead_height_m = "pedestrian-umbrella", 0.3 + 0.3 * h
     return s

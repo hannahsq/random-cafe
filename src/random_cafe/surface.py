@@ -11,7 +11,9 @@ its waves get faster with frequency, its modes are spread evenly in frequency sq
 it loses energy in its mounting (gaskets, frame) more than in itself, and it radiates well only above its coincidence
 frequency, where its bending waves outrun sound (heuristic radiation efficiency below).
 
-Prototype: not yet used by the rain layer."""
+The rain layer uses these for a window pane (indoors) and for what is overhead (Rain.overhead).
+
+Credit: umbrella-rain (github.com/hannahsq/umbrella-rain) for the canopy model this adapts."""
 from dataclasses import dataclass
 
 import numpy as np
@@ -43,6 +45,7 @@ class Surface:
     modes_hz: tuple = ()  # measured modes standing out of the continuum (plates that are not flat panels)
     ring_db: float = -3.0  # the ring's energy re the drop's own tick (through the surface; a ground tick for plates)
     splash_share: float = 1.0  # how much of the drop's splash a surface leaves (fabric soaks much of it up)
+    coincidence_hz: float = 0.0  # if set, where the plate radiates from (a profiled sheet is far stiffer across it)
     flank_share: float = 0.0  # corrugated: the share of drops landing on a flank, and its tilt
     flank_deg: float = 0.0
     p_relanding: float = 0.0  # chance a flank drop's water lands again in the valley, 2-4.5 ms later
@@ -87,6 +90,15 @@ CORRUGATED_POLYCARBONATE.modes_hz = (220.0, 420.0, 670.0, 940.0, 1190.0, 1690.0,
 CORRUGATED_POLYCARBONATE.ring_db = -6.0
 CORRUGATED_POLYCARBONATE.flank_share, CORRUGATED_POLYCARBONATE.flank_deg = 0.4, 45.0
 CORRUGATED_POLYCARBONATE.p_relanding, CORRUGATED_POLYCARBONATE.p_splash_relanding = 1.0, 0.4
+# flat, 0.8 mm of it would radiate only above ~53 kHz; across its ribs it bends as a beam of the profile's depth
+# (D ~ E t d^2 / 8 ~ 80 N m for an 18 mm profile), which brings its coincidence down to ~2 kHz (heuristic: the sheet
+# radiates as if that held in both directions)
+CORRUGATED_POLYCARBONATE.coincidence_hz = 2000.0
+
+# what can be overhead in a scene (Rain.overhead): the surface and the radius it covers (None: a roof, as wide as
+# Rain.overhead_extent_m)
+OVERHEAD = {"cafe-umbrella": (CAFE_UMBRELLA, 1.25), "pedestrian-umbrella": (PEDESTRIAN_UMBRELLA, 0.7),
+            "folding-umbrella": (FOLDING_UMBRELLA, 0.5), "polycarbonate": (CORRUGATED_POLYCARBONATE, None)}
 
 
 def terminal_velocity(d_mm):
@@ -149,7 +161,9 @@ def crossover(s: Surface) -> float:
 
 def coincidence(s: Surface) -> float:
     """Where a plate's bending waves reach the speed of sound (a membrane's never do)."""
-    return C ** 2 / (2 * np.pi) * np.sqrt(s.sigma / s.bending) if s.kind == "plate" else np.inf
+    if s.kind != "plate":
+        return np.inf
+    return s.coincidence_hz or C ** 2 / (2 * np.pi) * np.sqrt(s.sigma / s.bending)
 
 
 def radiation(s: Surface, f):
