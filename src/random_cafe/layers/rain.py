@@ -70,11 +70,19 @@ def strength(d_mm: float) -> tuple[float, float]:
     return d_mm * v ** 3 / (2.0 * v_ref ** 3), SPLASH_RATIO * (d_mm / 2) ** 1.5 * (v / v_ref) * weber / (weber + 100)
 
 
-def grain(rng: np.random.Generator, d_mm: float, fs: int) -> np.ndarray:
+def grain(rng: np.random.Generator, d_mm: float, fs: int, contact_s: float | None = None,
+          splash_share: float = 1.0) -> np.ndarray:
     """One drop on hard ground: a one-cycle click as long as the contact, plus a splash of noise in 0.4 / tau to
-    2 / tau (a pulse that short has little energy above 1 / tau) with a 0.3 ms attack and a size-dependent decay."""
+    2 / tau (a pulse that short has little energy above 1 / tau) with a 0.3 ms attack and a size-dependent decay.
+    On a yielding surface (contact_s longer than the drop's own d / v) the click is as long as that contact and its
+    force (impulse / contact time) as much weaker; the splash is the water's own, but a surface that soaks the drop
+    up keeps only splash_share of it."""
     tau = d_mm * 1e-3 / float(terminal_velocity(d_mm))
     click, splash = strength(d_mm)
+    splash *= splash_share
+    t_click = max(contact_s or tau, tau)
+    hard = click  # the spike is the drop's (its trapped air), whatever it lands on
+    click *= (tau / t_click) ** 2
     decay = 1e-3 * d_mm ** 0.7
     n = int(5 * decay * fs) + 1
     t = np.arange(n) / fs
@@ -82,13 +90,14 @@ def grain(rng: np.random.Generator, d_mm: float, fs: int) -> np.ndarray:
     noise = signal.sosfilt(signal.butter(2, [min(0.4 / tau, hi / 2), hi], "bandpass", fs=fs, output="sos"),
                            rng.standard_normal(2 * n))[n:]  # past the filter's start-up
     y = splash * noise / (np.std(noise) + 1e-12) * np.minimum(t / 3e-4, 1) * np.exp(-t / decay)
-    tt = (np.arange(int(np.ceil(tau * fs))) + 0.5) / fs
-    y[:tt.size] += click * np.sin(2 * np.pi * tt / tau)
+    tt = (np.arange(int(np.ceil(t_click * fs))) + 0.5) / fs
+    y = np.pad(y, (0, max(0, tt.size - y.size)))
+    y[:tt.size] += click * np.sin(2 * np.pi * tt / t_click)
     if SPIKE and SPIKE_BAND[1] < 0.45 * fs:  # (above Nyquist at 16 kHz: left out, and no draw)
         m = min(int(8 * SPIKE_DECAY * fs) + 1, n)
         burst = signal.sosfilt(signal.butter(2, SPIKE_BAND, "bandpass", fs=fs, output="sos"),
                                rng.standard_normal(m) * np.exp(-np.arange(m) / fs / SPIKE_DECAY))
-        y[:m] += SPIKE * (d_mm / 2) ** SPIKE_EXP * click * burst / (np.sqrt(np.sum(burst ** 2) / fs / SPIKE_DECAY * 2) + 1e-12)
+        y[:m] += SPIKE * (d_mm / 2) ** SPIKE_EXP * hard * burst / (np.sqrt(np.sum(burst ** 2) / fs / SPIKE_DECAY * 2) + 1e-12)
     return y
 
 

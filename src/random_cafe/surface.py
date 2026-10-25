@@ -36,11 +36,13 @@ class Surface:
     rib_ref_hz: float = 100.0
     rib_dissipation: float = 0.45  # share of what crosses a rib that is lost there
     contact_ms: float = 0.0  # extra contact time a soft surface adds (umbrella-rain's fabric compliance)
+    contact_ref_mm: float = 0.0  # if set, that extra time is for a drop this size, and scales with its diameter
     top_hz: float = 8000.0  # top of the continuum
     extra_loss: float = 0.0  # membrane: the fabric's own loss factor, on top of its ribs'
     t60_s: float = 0.0  # plate: if set, one decay time at every frequency (losses into the mounting and air)
     modes_hz: tuple = ()  # measured modes standing out of the continuum (plates that are not flat panels)
     ring_db: float = -3.0  # the ring's energy re the drop's own tick (through the surface; a ground tick for plates)
+    splash_share: float = 1.0  # how much of the drop's splash a surface leaves (fabric soaks much of it up)
     flank_share: float = 0.0  # corrugated: the share of drops landing on a flank, and its tilt
     flank_deg: float = 0.0
     p_relanding: float = 0.0  # chance a flank drop's water lands again in the valley, 2-4.5 ms later
@@ -62,11 +64,14 @@ CAFE_UMBRELLA = Surface("cafe umbrella", "membrane", 1.25, np.pi * 1.25 / 8, 0.3
                         rib_impedance=1.4 * np.sqrt((400.0 * 0.3) / (180.0 * 0.07)), contact_ms=0.4)
 WINDOW = plate("window pane", 1.2, 1.0, 0.005, 70e9, 2500.0, poisson=0.22, loss=0.02)
 WINDOW.ring_db = 0.0  # heuristic: a 2 mm drop's ring as loud as its tick on the ground
-# fitted to a recording (Hannah's, under an ultra-light folding umbrella, eval only): the fabric pushes out and back
-# once in ~1.4 ms (energy peaking at ~470 Hz), falls 20 dB within 3 ms, and leaves no ring above the street; slack,
-# flimsy fabric (tension and areal density heuristic), contact time and its own loss fitted
+# fitted to a recording (Hannah's, under an ultra-light folding umbrella, ~15-30 cm, eval only): open rain and tree
+# drips apart. A large drop pushes the fabric out and back once in ~1.4 ms (energy peaking at ~470 Hz), a small one
+# dents it for less (the extra contact time scales with the drop's diameter, 1.3 ms at 4 mm), so a small drop's click
+# sits near 2 kHz; the fabric soaks up most of the splash (20 % kept); within 3 ms every tick has fallen 20-25 dB and
+# leaves no ring above the street. Slack, flimsy fabric (tension and areal density heuristic); contact time, its own
+# loss, ring level and splash share fitted (onset spectra within ~3 dB rms for 1 and 5 mm drops)
 FOLDING_UMBRELLA = Surface("folding umbrella", "membrane", 0.5, np.pi * 0.5 / 8, 0.05, tension=40.0,
-                           contact_ms=1.3, extra_loss=0.5, ring_db=-6.0)
+                           contact_ms=1.3, contact_ref_mm=4.0, extra_loss=0.5, ring_db=-15.0, splash_share=0.2)
 # corrugated polycarbonate roofing (0.8 mm, one bay between purlins), fitted to recordings (Hannah's, eval only;
 # 5-10 cm, ~1 m and 1.5-2 m off): modes at the frequencies standing out of its ring, which fades at about one rate at
 # every frequency (T60 ~0.1 s). Its trapezoid profile /-\_/-\_ with 45 degree flanks (~0.4 of its plan area if all
@@ -165,7 +170,8 @@ def contact(s: Surface, d_mm: float, stretch: float = 1.0) -> tuple[float, float
     j = RHO_W * np.pi * (d_mm * 1e-3) ** 3 / 6 * v
     tau = d_mm * 1e-3 / v * stretch
     if s.kind == "membrane":
-        tau = float(np.hypot(tau, np.hypot(s.contact_ms * 1e-3, np.sqrt((j / v) / (np.pi * s.tension)))))
+        extra = s.contact_ms * 1e-3 * (d_mm / s.contact_ref_mm if s.contact_ref_mm else 1.0)
+        tau = float(np.hypot(tau, np.hypot(extra, np.sqrt((j / v) / (np.pi * s.tension)))))
     return j, tau
 
 
@@ -252,7 +258,8 @@ def ring_gain(s: Surface, fs: int, near: bool = False) -> float:
 def strike(rng: np.random.Generator, s: Surface, d_mm: float, fs: int, near: bool = False) -> np.ndarray:
     """One drop as heard beneath or behind the surface: its ring plus its own tick. Close behind (near: within
     tens of cm, as recorded) the surface's motion under the drop carries the tick whole and its near field is heard
-    without radiation loss; further off the tick comes through the surface by the mass law. On a
+    without radiation loss; further off the tick comes through the surface by the mass law. The drop's click lasts
+    as long as its contact with the surface, so on a yielding one it is duller and weaker (see rain.grain). On a
     corrugated sheet a flank takes the impulse's normal part (cos of its tilt) over a contact as much longer
     (heuristic), and the water lands again 2-4.5 ms later, hitting about as hard as the glance (as recorded from 1-2 m
     off); a flat hit's splash may too."""
@@ -261,10 +268,8 @@ def strike(rng: np.random.Generator, s: Surface, d_mm: float, fs: int, near: boo
     c = np.cos(np.radians(s.flank_deg)) if flank else 1.0
 
     def hit(scale, stretch):
-        tick = grain(rng, d_mm, fs)
-        if stretch > 1.0:  # the drop's own tick, duller over the longer contact (heuristic corner 3 / contact time)
-            corner = 3 / (d_mm * 1e-3 / float(terminal_velocity(d_mm)) * stretch)
-            tick = signal.lfilter(*signal.butter(1, min(corner / (fs / 2), 0.99)), tick)
+        _, tau = contact(s, d_mm, stretch)
+        tick = grain(rng, d_mm, fs, contact_s=tau, splash_share=s.splash_share)  # duller over a yielding contact
         return (ring_gain(s, fs) * body(rng, s, d_mm, fs, scale=scale, near=near, stretch=stretch),
                 scale * (tick if near else through(s, tick, fs)))
 
